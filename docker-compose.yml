@@ -1,0 +1,97 @@
+services:
+  # Frontend React Application
+  frontend:
+    build: ./frontend
+    container_name: fashion-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - eep
+    volumes:
+      - ./eep/static:/usr/share/nginx/html/static
+
+  # External Endpoint Processor
+  eep:
+    build: ./eep
+    container_name: fashion-eep
+    ports:
+      - "7000:9000"
+    volumes:
+      - ./eep:/app
+      - ./eep/static:/app/static
+    depends_on:
+      - detection-iep
+      - style-iep
+      - feature-iep
+      - virtual-tryon-iep
+      - elegance-iep
+    environment:
+      - DETECTION_SERVICE_URL=http://detection-iep:8001
+      - STYLE_SERVICE_URL=http://style-iep:8002
+      - FEATURE_SERVICE_URL=http://feature-iep:8003
+      - VIRTUAL_TRYON_SERVICE_URL=http://virtual-tryon-iep:8004
+      - ELEGANCE_SERVICE_URL=http://elegance-iep:8005
+      - SERVICE_TIMEOUT=60
+
+  # Detection Internal Endpoint Processor
+  detection-iep:
+    build: ./detection_iep
+    container_name: detection-iep
+    ports:
+      - "7001:8001"
+    volumes:
+      - ./detection_iep:/app
+      - ./yolov8_clothing_detection_segmentation.pt:/app/models/yolov8_clothing_detection_segmentation.pt
+    environment:
+      - MODEL_PATH=/app/models/yolov8_clothing_detection_segmentation.pt
+      - CONFIDENCE_THRESHOLD=0.55
+
+  # Style Classification Internal Endpoint Processor
+  style-iep:
+    build: ./style_iep
+    container_name: style-iep
+    ports:
+      - "7002:8002"
+    volumes:
+      - ./style_iep:/app
+      - ./yolov8_style_model.pt:/app/models/yolov8_style_model.pt
+    environment:
+      - MODEL_PATH=/app/models/yolov8_style_model.pt
+      - CONFIDENCE_THRESHOLD=0.3
+
+  # Feature Extraction Internal Endpoint Processor
+  feature-iep:
+    build: ./feature_iep
+    container_name: feature-iep
+    ports:
+      - "7003:8003"
+    volumes:
+      - ./feature_iep:/app
+      - ./multitask_resnet50_finetuned.pt:/app/models/multitask_resnet50_finetuned.pt
+    environment:
+      - MODEL_PATH=/app/models/multitask_resnet50_finetuned.pt
+      
+  # Virtual Try-On Internal Endpoint Processor
+  virtual-tryon-iep:
+    build: ./virtual_tryon_iep
+    container_name: virtual-tryon-iep
+    ports:
+      - "7004:8004"
+    volumes:
+      - ./virtual_tryon_iep:/app
+      - ./virtual_tryon_iep/static:/app/static
+    environment:
+      - FASHN_AI_API_KEY=${FASHN_AI_API_KEY}
+      - FASHN_AI_BASE_URL=${FASHN_AI_BASE_URL}
+
+  # Elegance Chatbot Internal Endpoint Processor
+  elegance-iep:
+    build: ./elegance_iep
+    container_name: elegance-iep
+    ports:
+      - "7005:8005"
+    volumes:
+      - ./elegance_iep:/app
+      - ./elegance_iep/static:/app/static
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY} 

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment variables
+.env
+
+# Static files
+static/uploads/*
+static/results/*
+!static/uploads/.gitkeep
+!static/results/.gitkeep
+
+# Allow placeholder images
+!static/placeholders/
+!static/placeholders/*.jpg
+!static/placeholders/*.png
+!static/placeholders/*.jpeg
+!static/placeholders/*.md
+!static/placeholders/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
+
+# Mac OS
+.DS_Store 
