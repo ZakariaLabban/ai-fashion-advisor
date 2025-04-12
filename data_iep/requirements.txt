@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+qdrant-client
+mysql-connector-python
+google-api-python-client
+google-auth
+tqdm
+python-dotenv
