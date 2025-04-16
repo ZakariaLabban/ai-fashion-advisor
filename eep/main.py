@@ -433,6 +433,7 @@ async def home():
             <div class="tab active" onclick="showTab('analysis')">Clothing Analysis</div>
             <div class="tab" onclick="showTab('tryon')">Virtual Try-On</div>
             <div class="tab" onclick="showTab('multi-tryon')">Multi-Garment Try-On</div>
+            <div class="tab" onclick="showTab('match')">Outfit Matcher</div>
             <div class="tab" onclick="showTab('elegance')">Elegance Advisor</div>
         </div>
 
@@ -508,6 +509,24 @@ async def home():
                 </div>
                 <div class="info-text" style="margin-bottom: 20px;">At least one garment (top or bottom) must be provided</div>
                 <button type="submit">Try On Multiple Garments</button>
+            </form>
+        </div>
+
+        <div class="tab-content" id="match-content">
+            <h2>Outfit Matcher</h2>
+            <p class="info-text">Upload a topwear item and a bottomwear item to check how well they match together.</p>
+            <form action="/match" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="topwear">Upload Topwear Item:</label>
+                    <input type="file" name="topwear" id="topwear" accept="image/*" class="file-input" required>
+                    <div class="info-text">Shirt, t-shirt, blouse, jacket, etc.</div>
+                </div>
+                <div class="form-group">
+                    <label for="bottomwear">Upload Bottomwear Item:</label>
+                    <input type="file" name="bottomwear" id="bottomwear" accept="image/*" class="file-input" required>
+                    <div class="info-text">Pants, skirt, shorts, etc.</div>
+                </div>
+                <button type="submit">Analyze Match</button>
             </form>
         </div>
         
@@ -2486,8 +2505,7 @@ async def process_match(
         logger.error(f"Error in match processing: {str(e)}")
         return {"error": f"Match processing error: {str(e)}"}
 
-# Add match endpoint
-@app.post("/match", response_model=MatchResponse)
+@app.post("/match")
 async def match_outfit(
     request: Request,
     topwear: UploadFile = File(...),
@@ -2500,9 +2518,24 @@ async def match_outfit(
         # Record start time
         start_time = time.time()
         
+        # Generate request ID
+        request_id = str(uuid.uuid4())
+        
         # Get file contents
         topwear_content = await topwear.read()
         bottomwear_content = await bottomwear.read()
+        
+        # Save uploaded images
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        topwear_filename = f"{timestamp}_topwear_{request_id}.jpg"
+        bottomwear_filename = f"{timestamp}_bottomwear_{request_id}.jpg"
+        
+        topwear_path = await save_uploaded_image(topwear_content, topwear_filename)
+        bottomwear_path = await save_uploaded_image(bottomwear_content, bottomwear_filename)
+        
+        # Get public URLs
+        topwear_url = f"/static/uploads/{topwear_filename}"
+        bottomwear_url = f"/static/uploads/{bottomwear_filename}"
         
         # Process match
         async with httpx.AsyncClient() as client:
@@ -2518,7 +2551,16 @@ async def match_outfit(
         # Log result
         logger.info(f"Match processed successfully in {processing_time:.2f}s with score {match_result['match_score']}")
         
-        return match_result
+        # Generate HTML for the results page
+        html_result = generate_match_result_html(
+            topwear_img=topwear_url,
+            bottomwear_img=bottomwear_url,
+            match_result=match_result,
+            processing_time=processing_time,
+            timestamp=datetime.now().isoformat()
+        )
+        
+        return HTMLResponse(content=html_result, status_code=200)
         
     except Exception as e:
         logger.error(f"Error processing match request: {str(e)}")
@@ -2551,6 +2593,298 @@ async def api_match_outfit(
     except Exception as e:
         logger.error(f"Error processing API match request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
+
+def generate_match_result_html(topwear_img, bottomwear_img, match_result, processing_time, timestamp):
+    """Generate HTML for displaying match analysis results"""
+    
+    # Extract match scores and analysis
+    match_score = match_result["match_score"]
+    analysis = match_result["analysis"]
+    suggestions = match_result["suggestions"]
+    
+    # Generate analysis HTML
+    analysis_items_html = ""
+    for key, item in analysis.items():
+        # Format the category name nicely
+        category_name = key.replace('_', ' ').title()
+        
+        # Calculate percentage width for the score bar
+        score = item["score"]
+        score_percentage = score
+        
+        # Determine color based on score
+        if score >= 80:
+            color_class = "excellent"
+        elif score >= 65:
+            color_class = "good"
+        elif score >= 50:
+            color_class = "average"
+        else:
+            color_class = "poor"
+            
+        analysis_items_html += f"""
+        <div class="analysis-item">
+            <div class="analysis-header">
+                <h3>{category_name}</h3>
+                <div class="score-indicator {color_class}">{score}/100</div>
+            </div>
+            <div class="score-bar-container">
+                <div class="score-bar {color_class}" style="width: {score_percentage}%;"></div>
+            </div>
+            <p class="analysis-text">{item["analysis"]}</p>
+        </div>
+        """
+    
+    # Generate suggestions HTML
+    suggestions_html = ""
+    if suggestions:
+        suggestions_html = "<h3>Style Suggestions</h3><ul class='suggestions-list'>"
+        for suggestion in suggestions:
+            suggestions_html += f"<li><i class='suggestion-icon'>💡</i> {suggestion}</li>"
+        suggestions_html += "</ul>"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Outfit Match Analysis</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                max-width: 1000px; 
+                margin: 0 auto; 
+                padding: 20px;
+                background-color: #f9f9f9;
+                color: #333;
+            }}
+            .container {{
+                padding: 20px;
+            }}
+            .header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 30px;
+            }}
+            h1, h2, h3 {{ 
+                color: #2c3e50;
+            }}
+            h1 {{ 
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .back-btn {{
+                display: inline-block;
+                padding: 10px 15px;
+                background-color: #3498db;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: 500;
+                transition: all 0.3s ease;
+            }}
+            .back-btn:hover {{
+                background-color: #2980b9;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }}
+            .images-container {{
+                display: flex;
+                gap: 20px;
+                margin-bottom: 30px;
+            }}
+            .image-box {{
+                flex: 1;
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+                padding: 15px;
+                text-align: center;
+            }}
+            .image-box h3 {{
+                margin-top: 0;
+                color: #3498db;
+            }}
+            .image-box img {{
+                max-width: 100%;
+                max-height: 400px;
+                object-fit: contain;
+                border-radius: 5px;
+            }}
+            .score-overview {{
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+                padding: 25px;
+                margin-bottom: 30px;
+                text-align: center;
+                position: relative;
+            }}
+            .score-circle {{
+                width: 150px;
+                height: 150px;
+                border-radius: 50%;
+                margin: 0 auto 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 36px;
+                font-weight: bold;
+                color: white;
+                position: relative;
+            }}
+            .score-label {{
+                font-size: 18px;
+                margin-top: 15px;
+                font-weight: 500;
+            }}
+            .analysis-items {{
+                margin-bottom: 30px;
+            }}
+            .analysis-item {{
+                background-color: white;
+                padding: 20px;
+                margin-bottom: 15px;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            }}
+            .analysis-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }}
+            .analysis-header h3 {{
+                margin: 0;
+            }}
+            .score-indicator {{
+                font-weight: bold;
+                padding: 5px 10px;
+                border-radius: 20px;
+                color: white;
+            }}
+            .score-bar-container {{
+                height: 10px;
+                background-color: #eee;
+                border-radius: 5px;
+                margin-bottom: 15px;
+                overflow: hidden;
+            }}
+            .score-bar {{
+                height: 100%;
+                border-radius: 5px;
+            }}
+            .excellent {{
+                background-color: #27ae60;
+            }}
+            .good {{
+                background-color: #2980b9;
+            }}
+            .average {{
+                background-color: #f39c12;
+            }}
+            .poor {{
+                background-color: #e74c3c;
+            }}
+            .analysis-text {{
+                margin-top: 15px;
+                line-height: 1.5;
+            }}
+            .suggestions-container {{
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+                padding: 20px;
+                margin-bottom: 30px;
+            }}
+            .suggestions-container h3 {{
+                margin-top: 0;
+                margin-bottom: 15px;
+                color: #3498db;
+            }}
+            .suggestions-list {{
+                list-style-type: none;
+                padding: 0;
+            }}
+            .suggestions-list li {{
+                padding: 10px 0;
+                border-bottom: 1px solid #eee;
+                display: flex;
+                align-items: flex-start;
+            }}
+            .suggestions-list li:last-child {{
+                border-bottom: none;
+            }}
+            .suggestion-icon {{
+                margin-right: 10px;
+                font-style: normal;
+            }}
+            .metadata {{
+                font-size: 0.9em;
+                color: #666;
+                margin-top: 30px;
+                padding: 15px;
+                border-top: 1px solid #ddd;
+                background-color: #f1f1f1;
+                border-radius: 5px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Outfit Match Analysis</h1>
+                <a href="/" class="back-btn">Back to Upload</a>
+            </div>
+            
+            <div class="images-container">
+                <div class="image-box">
+                    <h3>Topwear</h3>
+                    <img src="{topwear_img}" alt="Topwear Image">
+                </div>
+                <div class="image-box">
+                    <h3>Bottomwear</h3>
+                    <img src="{bottomwear_img}" alt="Bottomwear Image">
+                </div>
+            </div>
+            
+            <div class="score-overview">
+                <div class="score-circle {
+                    'excellent' if match_score >= 80 else
+                    'good' if match_score >= 65 else
+                    'average' if match_score >= 50 else
+                    'poor'
+                }">
+                    {match_score}
+                </div>
+                <div class="score-label">
+                    {
+                    'Excellent Match!' if match_score >= 80 else
+                    'Good Match' if match_score >= 65 else
+                    'Average Compatibility' if match_score >= 50 else
+                    'Poor Match'
+                    }
+                </div>
+            </div>
+            
+            <div class="analysis-items">
+                <h2>Detailed Analysis</h2>
+                {analysis_items_html}
+            </div>
+            
+            <div class="suggestions-container">
+                {suggestions_html}
+            </div>
+            
+            <div class="metadata">
+                <p><strong>Processing Time:</strong> {processing_time:.2f} seconds</p>
+                <p><strong>Timestamp:</strong> {timestamp}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
 
 if __name__ == "__main__":
     import uvicorn
