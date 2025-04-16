@@ -122,6 +122,4 @@ services:
     volumes:
       - ./match_iep:/app
     environment:
-      - FEATURE_SERVICE_URL=http://feature-iep:8003
-      - STYLE_SERVICE_URL=http://style-iep:8002
       - SERVICE_TIMEOUT=30 

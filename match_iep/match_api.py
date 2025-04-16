@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any, Union
 import httpx
 import os
@@ -59,6 +59,17 @@ class ColorAnalysis(BaseModel):
     dominant_colors: List[List[int]]  # RGB values
     color_histogram: Dict[str, float]
     color_family: str
+
+class MatchRequest(BaseModel):
+    """Pydantic model for centralized match request with preprocessed data"""
+    top_style: str
+    bottom_style: str
+    top_vector: List[float] = Field(default_factory=list)
+    bottom_vector: List[float] = Field(default_factory=list)
+    top_histogram: List[float] = Field(default_factory=list)
+    bottom_histogram: List[float] = Field(default_factory=list)
+    top_detection: Dict[str, Any] = Field(default_factory=dict)
+    bottom_detection: Dict[str, Any] = Field(default_factory=dict)
 
 # Utility functions
 def extract_dominant_colors(image, n_colors=3):
@@ -1049,6 +1060,152 @@ async def match_outfit(
         
     except Exception as e:
         logger.error(f"Error processing match request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing match request: {str(e)}")
+
+@app.post("/compute_match", response_model=MatchResponse)
+async def compute_match(request: MatchRequest):
+    """
+    Calculate match score based on preprocessed data
+    
+    Args:
+        request: MatchRequest object with all necessary preprocessed data
+        
+    Returns:
+        MatchResponse with match score and analysis
+    """
+    try:
+        logger.info("Processing match from preprocessed data")
+        
+        # Extract data from request
+        top_style = request.top_style
+        bottom_style = request.bottom_style
+        top_vector = request.top_vector
+        bottom_vector = request.bottom_vector
+        top_histogram = request.top_histogram
+        bottom_histogram = request.bottom_histogram
+        
+        # Extract dominant colors - in a full implementation, this would be done by the EEP
+        # or a separate color analysis service. For now, we'll use placeholders
+        # Normally this would be extracted from the images via K-means clustering
+        top_colors = [(0.2, 0.3, 0.8), (0.1, 0.1, 0.1)]  # Placeholder blue and black
+        bottom_colors = [(0.8, 0.8, 0.8), (0.1, 0.1, 0.1)]  # Placeholder white and black
+        
+        # If we have actual detections, try to extract more information
+        if request.top_detection:
+            # In a real implementation, this might use the detection crop for more analysis
+            logger.info(f"Using top detection: {request.top_detection.get('class_name', 'unknown')}")
+            
+        if request.bottom_detection:
+            logger.info(f"Using bottom detection: {request.bottom_detection.get('class_name', 'unknown')}")
+            
+        # Get color families (simplified)
+        top_color_family = get_color_family(top_colors[0])
+        bottom_color_family = get_color_family(bottom_colors[0])
+        
+        # STEP 1: Calculate match metrics
+        
+        # 1.1: Color harmony from dominant colors
+        color_score, color_analysis = calculate_color_harmony(top_colors, bottom_colors)
+        
+        # 1.2: Feature vector match
+        feature_score = 0
+        feature_analysis = "Feature analysis not available."
+        if top_vector and bottom_vector:
+            feature_score, feature_analysis = calculate_feature_match_score(top_vector, bottom_vector)
+        
+        # 1.3: Color histogram match
+        histogram_score = 0
+        histogram_analysis = "Color histogram analysis not available."
+        if top_histogram and bottom_histogram:
+            histogram_score, histogram_analysis = calculate_color_histogram_match(top_histogram, bottom_histogram)
+        
+        # 1.4: Style consistency based on style classifications
+        style_score, style_analysis = evaluate_style_consistency(top_style, bottom_style)
+        
+        # 1.5: Occasion appropriateness based on style and color
+        occasion_score, occasion_analysis = analyze_occasion_appropriateness(
+            top_style, bottom_style, top_color_family, bottom_color_family
+        )
+        
+        # STEP 2: Calculate weighted overall match score
+        weights = {
+            "color_harmony": 0.30,      # Dominant colors from K-means
+            "feature_match": 0.30,      # Feature vectors
+            "color_histogram": 0.25,    # Detailed color distribution
+            "style_consistency": 0.10,  # Style classification
+            "occasion": 0.05,           # Occasion appropriateness
+        }
+        
+        # If feature or histogram scores are not available, redistribute their weights
+        if feature_score == 0:
+            redistribution = weights["feature_match"] / 4  # Divide by 4 components
+            weights["feature_match"] = 0
+            weights["color_harmony"] += redistribution
+            weights["color_histogram"] += redistribution
+            weights["style_consistency"] += redistribution
+            weights["occasion"] += redistribution
+            
+        if histogram_score == 0:
+            redistribution = weights["color_histogram"] / 4  # Divide by 4 components
+            weights["color_histogram"] = 0
+            weights["color_harmony"] += redistribution
+            weights["feature_match"] += redistribution
+            weights["style_consistency"] += redistribution
+            weights["occasion"] += redistribution
+        
+        # Calculate weighted score
+        overall_score = round(
+            weights["color_harmony"] * color_score +
+            weights["feature_match"] * feature_score +
+            weights["color_histogram"] * histogram_score +
+            weights["style_consistency"] * style_score +
+            weights["occasion"] * occasion_score
+        )
+        
+        # STEP 3: Compile analysis results
+        analysis = {
+            "color_harmony": {
+                "score": color_score,
+                "analysis": color_analysis
+            },
+            "style_consistency": {
+                "score": style_score,
+                "analysis": style_analysis
+            },
+            "occasion_appropriateness": {
+                "score": occasion_score,
+                "analysis": occasion_analysis
+            }
+        }
+        
+        # Add feature and histogram analysis if available
+        if feature_score > 0:
+            analysis["feature_match"] = {
+                "score": feature_score,
+                "analysis": feature_analysis
+            }
+            
+        if histogram_score > 0:
+            analysis["color_histogram_match"] = {
+                "score": histogram_score,
+                "analysis": histogram_analysis
+            }
+        
+        # Generate suggestions
+        suggestions = generate_suggestions(analysis)
+        
+        # Prepare response
+        response = {
+            "match_score": overall_score,
+            "analysis": analysis,
+            "suggestions": suggestions,
+            "alternative_pairings": []
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error processing compute_match request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing match request: {str(e)}")
 
 # Run the app if executed directly

@@ -2475,28 +2475,228 @@ async def process_match(
     bottomwear_data: bytes
 ) -> Dict:
     """
-    Process a match request between a topwear and bottomwear item
+    Process match request by:
+    1. Sending images to detection-iep to identify clothing items
+    2. Sending images to style-iep for style classification
+    3. Extracting specific garments and sending to feature-iep
+    4. Preparing payload with all extracted data
+    5. Sending preprocessed data to match-iep for final scoring
+    
+    Args:
+        client: httpx client
+        topwear_data: image data for top clothing item
+        bottomwear_data: image data for bottom clothing item
+        
+    Returns:
+        dict: match results
     """
     try:
-        # Prepare form data with files
-        form = aiofiles.tempfile.SpooledTemporaryFile()
-        form_data = {
-            "topwear": ("topwear.jpg", topwear_data, "image/jpeg"),
-            "bottomwear": ("bottomwear.jpg", bottomwear_data, "image/jpeg")
+        logger.info("Processing match request through centralized pipeline")
+        
+        # STEP 1: Send both images to detection-iep
+        logger.info("Sending images to Detection IEP")
+        detection_tasks = [
+            client.post(
+                f"{DETECTION_SERVICE_URL}/detect",
+                files={"file": ("topwear.jpg", topwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{DETECTION_SERVICE_URL}/detect",
+                files={"file": ("bottomwear.jpg", bottomwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_detection_response, bottom_detection_response = await asyncio.gather(*detection_tasks)
+        
+        if top_detection_response.status_code != 200 or bottom_detection_response.status_code != 200:
+            logger.error(f"Detection IEP error: Top status={top_detection_response.status_code}, Bottom status={bottom_detection_response.status_code}")
+            return {"error": "Detection service error"}
+        
+        top_detection_result = top_detection_response.json()
+        bottom_detection_result = bottom_detection_response.json()
+        
+        # STEP 2: Send both images to style-iep
+        logger.info("Sending images to Style IEP")
+        style_tasks = [
+            client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files={"file": ("topwear.jpg", topwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files={"file": ("bottomwear.jpg", bottomwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_style_response, bottom_style_response = await asyncio.gather(*style_tasks)
+        
+        if top_style_response.status_code != 200 or bottom_style_response.status_code != 200:
+            logger.error(f"Style IEP error: Top status={top_style_response.status_code}, Bottom status={bottom_style_response.status_code}")
+            return {"error": "Style service error"}
+        
+        top_style_result = top_style_response.json()
+        bottom_style_result = bottom_style_response.json()
+        
+        # STEP 3: Extract specific garments from detection results
+        # Find shirt in topwear
+        top_shirt = None
+        top_shirt_crop = None
+        if "detections" in top_detection_result:
+            for detection in top_detection_result["detections"]:
+                if detection.get("class_name") == "Shirt":
+                    top_shirt = detection
+                    # Extract crop from the image using bbox
+                    try:
+                        import io
+                        from PIL import Image
+                        # Convert to PIL image
+                        top_image = Image.open(io.BytesIO(topwear_data)).convert('RGB')
+                        # Extract crop
+                        bbox = detection.get("bbox", [0, 0, 0, 0])
+                        if len(bbox) == 4:
+                            x_min, y_min, x_max, y_max = bbox
+                            # Ensure bbox is within image bounds
+                            width, height = top_image.size
+                            x_min = max(0, x_min)
+                            y_min = max(0, y_min)
+                            x_max = min(width, x_max)
+                            y_max = min(height, y_max)
+                            
+                            if x_max > x_min and y_max > y_min:
+                                top_shirt_crop = top_image.crop((x_min, y_min, x_max, y_max))
+                    except Exception as e:
+                        logger.error(f"Error extracting top shirt crop: {str(e)}")
+                    break
+        
+        # Find pants/shorts in bottomwear
+        bottom_pants = None
+        bottom_pants_crop = None
+        if "detections" in bottom_detection_result:
+            for detection in bottom_detection_result["detections"]:
+                if detection.get("class_name") in ["Pants", "Shorts", "Pants/Shorts"]:
+                    bottom_pants = detection
+                    # Extract crop from the image using bbox
+                    try:
+                        import io
+                        from PIL import Image
+                        # Convert to PIL image
+                        bottom_image = Image.open(io.BytesIO(bottomwear_data)).convert('RGB')
+                        # Extract crop
+                        bbox = detection.get("bbox", [0, 0, 0, 0])
+                        if len(bbox) == 4:
+                            x_min, y_min, x_max, y_max = bbox
+                            # Ensure bbox is within image bounds
+                            width, height = bottom_image.size
+                            x_min = max(0, x_min)
+                            y_min = max(0, y_min)
+                            x_max = min(width, x_max)
+                            y_max = min(height, y_max)
+                            
+                            if x_max > x_min and y_max > y_min:
+                                bottom_pants_crop = bottom_image.crop((x_min, y_min, x_max, y_max))
+                    except Exception as e:
+                        logger.error(f"Error extracting bottom pants crop: {str(e)}")
+                    break
+        
+        # STEP 4: Extract features for the specific garments or full images
+        logger.info("Extracting features")
+        
+        # Prepare images for feature extraction
+        top_feature_image = topwear_data
+        bottom_feature_image = bottomwear_data
+        
+        # If we have crops, use them instead
+        if top_shirt_crop:
+            import io
+            top_crop_bytes = io.BytesIO()
+            top_shirt_crop.save(top_crop_bytes, format='JPEG')
+            top_feature_image = top_crop_bytes.getvalue()
+        
+        if bottom_pants_crop:
+            import io
+            bottom_crop_bytes = io.BytesIO()
+            bottom_pants_crop.save(bottom_crop_bytes, format='JPEG')
+            bottom_feature_image = bottom_crop_bytes.getvalue()
+        
+        # Send feature extraction requests
+        feature_tasks = [
+            client.post(
+                f"{FEATURE_SERVICE_URL}/extract",
+                files={"file": ("top_feature.jpg", top_feature_image, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{FEATURE_SERVICE_URL}/extract",
+                files={"file": ("bottom_feature.jpg", bottom_feature_image, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_feature_response, bottom_feature_response = await asyncio.gather(*feature_tasks)
+        
+        if top_feature_response.status_code != 200 or bottom_feature_response.status_code != 200:
+            logger.error(f"Feature IEP error: Top status={top_feature_response.status_code}, Bottom status={bottom_feature_response.status_code}")
+            # We'll continue even if feature extraction fails, as match-iep can handle missing features
+        
+        top_feature_result = top_feature_response.json() if top_feature_response.status_code == 200 else {"error": "Feature extraction failed"}
+        bottom_feature_result = bottom_feature_response.json() if bottom_feature_response.status_code == 200 else {"error": "Feature extraction failed"}
+        
+        # STEP 5: Prepare payload for match-iep with all preprocessed data
+        # Extract top style
+        top_style = "unknown"
+        if "styles" in top_style_result and top_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(top_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            top_style = sorted_styles[0]["style_name"].lower()
+        
+        # Extract bottom style
+        bottom_style = "unknown"
+        if "styles" in bottom_style_result and bottom_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(bottom_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            bottom_style = sorted_styles[0]["style_name"].lower()
+        
+        # Extract feature vectors and histograms
+        top_vector = []
+        bottom_vector = []
+        top_histogram = []
+        bottom_histogram = []
+        
+        if "error" not in top_feature_result:
+            top_vector = top_feature_result.get("features", [])
+            top_histogram = top_feature_result.get("color_histogram", [])
+        
+        if "error" not in bottom_feature_result:
+            bottom_vector = bottom_feature_result.get("features", [])
+            bottom_histogram = bottom_feature_result.get("color_histogram", [])
+        
+        # STEP 6: Create payload for match-iep
+        payload = {
+            "top_style": top_style,
+            "bottom_style": bottom_style,
+            "top_vector": top_vector,
+            "bottom_vector": bottom_vector,
+            "top_histogram": top_histogram,
+            "bottom_histogram": bottom_histogram,
+            # Include detection information as well
+            "top_detection": top_shirt if top_shirt else {},
+            "bottom_detection": bottom_pants if bottom_pants else {}
         }
         
-        # Send request to match IEP
-        response = await client.post(
-            f"{MATCH_SERVICE_URL}/match",
-            files=form_data,
+        # STEP 7: Send to match-iep for scoring only
+        logger.info("Sending preprocessed data to Match IEP")
+        match_response = await client.post(
+            f"{MATCH_SERVICE_URL}/compute_match",
+            json=payload,
             timeout=SERVICE_TIMEOUT
         )
         
-        if response.status_code != 200:
-            logger.error(f"Match service error: {response.text}")
-            return {"error": f"Match service error: {response.status_code}"}
+        if match_response.status_code != 200:
+            logger.error(f"Match service error: {match_response.text}")
+            return {"error": f"Match service error: {match_response.status_code}"}
         
-        return response.json()
+        return match_response.json()
     except Exception as e:
         logger.error(f"Error in match processing: {str(e)}")
         return {"error": f"Match processing error: {str(e)}"}
@@ -2912,118 +3112,6 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
     """
     
     return html
-
-# Internal proxy endpoints for match-iep to communicate with other IEPs
-@app.post("/internal/style/classify")
-async def internal_style_classify(request: Request):
-    """
-    Internal endpoint for match-iep to call style-iep's classify endpoint
-    """
-    try:
-        # Get the form data from the request
-        form_data = await request.form()
-        file_obj = form_data.get("file")
-        
-        if not file_obj:
-            raise HTTPException(status_code=400, detail="No file provided")
-            
-        # Read file content
-        content = await file_obj.read()
-        
-        # Prepare files for forwarding to style-iep
-        files = {"file": (file_obj.filename, content, file_obj.content_type)}
-        
-        # Forward to style-iep
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{STYLE_SERVICE_URL}/classify",
-                files=files,
-                timeout=SERVICE_TIMEOUT
-            )
-            
-            # Return response directly
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in internal style proxy: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Style service proxy error: {str(e)}")
-        
-@app.post("/internal/detection/detect")
-async def internal_detection_detect(request: Request):
-    """
-    Internal endpoint for match-iep to call detection-iep's detect endpoint
-    """
-    try:
-        # Get the form data from the request
-        form_data = await request.form()
-        file_obj = form_data.get("file")
-        
-        if not file_obj:
-            raise HTTPException(status_code=400, detail="No file provided")
-            
-        # Read file content
-        content = await file_obj.read()
-        
-        # Prepare files for forwarding to detection-iep
-        files = {"file": (file_obj.filename, content, file_obj.content_type)}
-        
-        # Forward to detection-iep
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{DETECTION_SERVICE_URL}/detect",
-                files=files,
-                timeout=SERVICE_TIMEOUT
-            )
-            
-            # Return response directly
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in internal detection proxy: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Detection service proxy error: {str(e)}")
-        
-@app.post("/internal/feature/extract")
-async def internal_feature_extract(request: Request):
-    """
-    Internal endpoint for match-iep to call feature-iep's extract endpoint
-    """
-    try:
-        # Get the form data from the request
-        form_data = await request.form()
-        file_obj = form_data.get("file")
-        
-        if not file_obj:
-            raise HTTPException(status_code=400, detail="No file provided")
-            
-        # Read file content
-        content = await file_obj.read()
-        
-        # Prepare files for forwarding to feature-iep
-        files = {"file": (file_obj.filename, content, file_obj.content_type)}
-        
-        # Forward to feature-iep
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{FEATURE_SERVICE_URL}/extract",
-                files=files,
-                timeout=SERVICE_TIMEOUT
-            )
-            
-            # Return response directly
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in internal feature proxy: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Feature service proxy error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

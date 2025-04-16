@@ -15,28 +15,15 @@ It provides a comprehensive match score along with detailed analysis and styling
 
 ## Features
 
-- **Topwear/Bottomwear Validation**: Ensures the provided items are correctly identified using the Style IEP
-- **Specific Garment Detection**: Uses Detection IEP to isolate specific clothing items (Shirt for topwear, Pants/Shorts for bottomwear)
-- **Dominant Color Analysis (K-means)**: Evaluates color compatibility using color theory principles and K-means clustering
-- **Feature Vector Matching**: Uses cosine similarity to compare deep learning feature embeddings from Feature IEP
+- **Score-only Processing**: Focuses solely on calculating match scores based on pre-processed data received from the External Endpoint Processor (EEP)
+- **Dominant Color Analysis (K-means)**: Evaluates color compatibility using color theory principles
+- **Feature Vector Matching**: Uses cosine similarity to compare deep learning feature embeddings
 - **Advanced Color Histogram Matching**: Evaluates color distribution compatibility using both similarity and contrast metrics
-- **Style Compatibility**: Assesses style consistency between different clothing types using real style classifications from the Style IEP
+- **Style Compatibility**: Assesses style consistency between different clothing types
 - **Occasion Matching**: Determines appropriate settings for the outfit
 - **Styling Suggestions**: Provides actionable recommendations for improvement
 
 ## Matching Algorithm
-
-### Detection and Processing Pipeline
-
-1. **Clothing Detection**:
-   - Uses Detection IEP to identify specific garments in the uploaded images
-   - Locates "Shirt" in topwear image and "Pants/Shorts" in bottomwear image
-   - Extracts cropped regions of the detected clothing items for more accurate analysis
-
-2. **Feature Extraction**:
-   - Sends detected garment crops to Feature IEP 
-   - Extracts feature vectors and color histograms from the specific garments
-   - Falls back to full image if specific garments aren't detected
 
 ### Scoring Components
 
@@ -68,20 +55,55 @@ The service exposes the following endpoints:
 
 - `GET /`: Root endpoint with information about the service
 - `GET /health`: Health check endpoint
-- `POST /match`: Evaluate matchability between topwear and bottomwear items
+- `POST /match`: Legacy endpoint for direct image submission (for backwards compatibility)
+- `POST /compute_match`: **New** Accepts pre-processed data for scoring only
+
+## Updated Architecture
+
+This service has been refactored to follow a centralized data processing pattern:
+
+1. The External Endpoint Processor (EEP) handles all inter-service communication:
+   - EEP sends images to Detection IEP
+   - EEP sends images to Style IEP
+   - EEP sends detected garment crops to Feature IEP
+   - EEP consolidates all results from these services
+
+2. The Match IEP now focuses solely on its core competency:
+   - Receiving pre-processed data (styles, features, histograms) from the EEP
+   - Computing match scores and generating analysis
+   - Providing styling recommendations
+
+This architecture has the following benefits:
+- Reduced network traffic between services
+- Decreased latency by parallelizing requests
+- Improved fault isolation
+- Simplified service responsibilities
 
 ## Usage
 
-### POST /match
+### POST /compute_match (New Endpoint)
 
 **Request:**
+```json
+{
+  "top_style": "casual",
+  "bottom_style": "casual",
+  "top_vector": [0.2, 0.5, 0.1, ...],
+  "bottom_vector": [0.3, 0.4, 0.2, ...],
+  "top_histogram": [0.1, 0.2, 0.3, ...],
+  "bottom_histogram": [0.2, 0.1, 0.3, ...],
+  "top_detection": {
+    "class_name": "Shirt",
+    "confidence": 0.95,
+    "bbox": [10, 20, 100, 200]
+  },
+  "bottom_detection": {
+    "class_name": "Pants",
+    "confidence": 0.92,
+    "bbox": [15, 250, 110, 450]
+  }
+}
 ```
-POST /match
-```
-
-Form data:
-- `topwear`: Image file of top clothing item
-- `bottomwear`: Image file of bottom clothing item
 
 **Response:**
 ```json
@@ -116,19 +138,13 @@ Form data:
 }
 ```
 
-## Integration with Services
+### POST /match (Legacy Endpoint)
 
-This service integrates with multiple IEPs:
-
-1. **Style IEP**: Gets actual style classifications for both items
-2. **Detection IEP**: Identifies specific clothing items in images for targeted analysis
-3. **Feature IEP**: Extracts feature vectors and color histograms for advanced matching
+This endpoint is maintained for backward compatibility. It still accepts direct image uploads but internally the EEP now handles all the communication with other services.
 
 ## Configuration
 
 Configure the service through environment variables:
-- `FEATURE_SERVICE_URL`: URL to Feature IEP (default: http://feature-iep:8003)
-- `STYLE_SERVICE_URL`: URL to Style IEP (default: http://style-iep:8002)
 - `SERVICE_TIMEOUT`: Timeout for internal service requests in seconds (default: 30)
 
 ## Development
@@ -155,11 +171,4 @@ docker run -p 8008:8008 match-iep
 
 ## Integration with EEP
 
-This service is designed to be called by the External Endpoint Processor (EEP) which handles user interfaces and coordinates between services.
-
-## Future Enhancements
-
-- Integration with recommendation system for alternative pairings
-- User preference learning for personalized matching
-- Season-appropriate outfit analysis
-- Integration with virtual try-on to visualize matches 
+This service now follows a centralized processing model where the External Endpoint Processor (EEP) coordinates all data flow between services and the Match IEP focuses solely on calculating match scores and analysis. 
