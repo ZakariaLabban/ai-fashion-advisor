@@ -2913,6 +2913,118 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
     
     return html
 
+# Internal proxy endpoints for match-iep to communicate with other IEPs
+@app.post("/internal/style/classify")
+async def internal_style_classify(request: Request):
+    """
+    Internal endpoint for match-iep to call style-iep's classify endpoint
+    """
+    try:
+        # Get the form data from the request
+        form_data = await request.form()
+        file_obj = form_data.get("file")
+        
+        if not file_obj:
+            raise HTTPException(status_code=400, detail="No file provided")
+            
+        # Read file content
+        content = await file_obj.read()
+        
+        # Prepare files for forwarding to style-iep
+        files = {"file": (file_obj.filename, content, file_obj.content_type)}
+        
+        # Forward to style-iep
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files=files,
+                timeout=SERVICE_TIMEOUT
+            )
+            
+            # Return response directly
+            return JSONResponse(
+                content=response.json(),
+                status_code=response.status_code
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in internal style proxy: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Style service proxy error: {str(e)}")
+        
+@app.post("/internal/detection/detect")
+async def internal_detection_detect(request: Request):
+    """
+    Internal endpoint for match-iep to call detection-iep's detect endpoint
+    """
+    try:
+        # Get the form data from the request
+        form_data = await request.form()
+        file_obj = form_data.get("file")
+        
+        if not file_obj:
+            raise HTTPException(status_code=400, detail="No file provided")
+            
+        # Read file content
+        content = await file_obj.read()
+        
+        # Prepare files for forwarding to detection-iep
+        files = {"file": (file_obj.filename, content, file_obj.content_type)}
+        
+        # Forward to detection-iep
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{DETECTION_SERVICE_URL}/detect",
+                files=files,
+                timeout=SERVICE_TIMEOUT
+            )
+            
+            # Return response directly
+            return JSONResponse(
+                content=response.json(),
+                status_code=response.status_code
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in internal detection proxy: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection service proxy error: {str(e)}")
+        
+@app.post("/internal/feature/extract")
+async def internal_feature_extract(request: Request):
+    """
+    Internal endpoint for match-iep to call feature-iep's extract endpoint
+    """
+    try:
+        # Get the form data from the request
+        form_data = await request.form()
+        file_obj = form_data.get("file")
+        
+        if not file_obj:
+            raise HTTPException(status_code=400, detail="No file provided")
+            
+        # Read file content
+        content = await file_obj.read()
+        
+        # Prepare files for forwarding to feature-iep
+        files = {"file": (file_obj.filename, content, file_obj.content_type)}
+        
+        # Forward to feature-iep
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{FEATURE_SERVICE_URL}/extract",
+                files=files,
+                timeout=SERVICE_TIMEOUT
+            )
+            
+            # Return response directly
+            return JSONResponse(
+                content=response.json(),
+                status_code=response.status_code
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in internal feature proxy: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Feature service proxy error: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=9000, log_level="info")
