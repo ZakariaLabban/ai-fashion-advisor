@@ -10,14 +10,11 @@ function OutfitMatcher() {
   const [topPreview, setTopPreview] = useState('')
   const [bottomPreview, setBottomPreview] = useState('')
   
-  // State for style selections
-  const [topStyle, setTopStyle] = useState('casual')
-  const [bottomStyle, setBottomStyle] = useState('casual')
-  
   // State for loading, results and errors
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
+  const [progressStatus, setProgressStatus] = useState('')
 
   // Handle file change for top item
   const handleTopFileChange = (e) => {
@@ -62,29 +59,62 @@ function OutfitMatcher() {
     setLoading(true)
     setError('')
     setResults(null)
+    setProgressStatus('Analyzing your garments...')
     
     try {
       // Create FormData object
       const formData = new FormData()
       formData.append('topwear', topFile)
       formData.append('bottomwear', bottomFile)
-      formData.append('top_style', topStyle)
-      formData.append('bottom_style', bottomStyle)
       
-      // Make API request
+      // Create a controller for aborting request if it takes too long
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      
+      setProgressStatus('Detecting clothing items...')
+      
+      // Make API request with timeout
       const response = await axios.post('/api/match', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
+        },
+        signal: controller.signal,
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          setProgressStatus(`Uploading images... ${percentCompleted}%`)
         }
       })
+      
+      // Clear timeout since request completed
+      clearTimeout(timeoutId)
+      
+      // Check if response has data
+      if (!response.data) {
+        throw new Error('No data received from server')
+      }
+      
+      setProgressStatus('Processing match results...')
       
       // Set results
       setResults(response.data)
     } catch (err) {
       console.error('Error matching outfit:', err)
-      setError(err.response?.data?.detail || 'Failed to match outfit. Please try again.')
+      // Handle specific error types
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        setError('Request timed out. The server is taking too long to respond. Please try again later.')
+      } else if (err.response) {
+        // The request was made and the server responded with a status code outside of 2xx range
+        setError(err.response.data?.detail || `Server error: ${err.response.status}`)
+      } else if (err.request) {
+        // The request was made but no response was received
+        setError('No response received from server. Please check your connection and try again.')
+      } else {
+        // Something happened in setting up the request
+        setError(err.message || 'Failed to match outfit. Please try again.')
+      }
     } finally {
       setLoading(false)
+      setProgressStatus('')
     }
   }
 
@@ -147,6 +177,9 @@ function OutfitMatcher() {
           <p className="mt-4 text-xl text-gray-600 max-w-3xl mx-auto">
             Upload top and bottom garments to see how well they match and get styling suggestions.
           </p>
+          <p className="mt-2 text-sm text-gray-500 max-w-3xl mx-auto">
+            Our AI will automatically detect clothing styles and analyze their compatibility.
+          </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
@@ -167,30 +200,16 @@ function OutfitMatcher() {
                         </label>
                         <div className="relative">
                           <input
+                            id="top-file"
                             type="file"
                             onChange={handleTopFileChange}
                             accept="image/*"
                             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-secondary file:text-white hover:file:bg-blue-600"
                           />
                         </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Style Category
-                        </label>
-                        <select
-                          value={topStyle}
-                          onChange={(e) => setTopStyle(e.target.value)}
-                          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-secondary focus:border-secondary rounded-md"
-                        >
-                          <option value="casual">Casual</option>
-                          <option value="formal">Formal</option>
-                          <option value="sports">Sports</option>
-                          <option value="ethnic">Ethnic</option>
-                          <option value="business">Business</option>
-                          <option value="party">Party</option>
-                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Supported formats: JPG, PNG, WEBP. Max size: 10MB
+                        </p>
                       </div>
                       
                       <div className="mt-4">
@@ -241,24 +260,9 @@ function OutfitMatcher() {
                             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-secondary file:text-white hover:file:bg-blue-600"
                           />
                         </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Style Category
-                        </label>
-                        <select
-                          value={bottomStyle}
-                          onChange={(e) => setBottomStyle(e.target.value)}
-                          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-secondary focus:border-secondary rounded-md"
-                        >
-                          <option value="casual">Casual</option>
-                          <option value="formal">Formal</option>
-                          <option value="sports">Sports</option>
-                          <option value="ethnic">Ethnic</option>
-                          <option value="business">Business</option>
-                          <option value="party">Party</option>
-                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Supported formats: JPG, PNG, WEBP. Max size: 10MB
+                        </p>
                       </div>
                       
                       <div className="mt-4">
@@ -319,6 +323,18 @@ function OutfitMatcher() {
                     )}
                   </button>
                 </div>
+                
+                {loading && progressStatus && (
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-md">
+                    <div className="flex items-center">
+                      <i className="fas fa-spinner fa-spin text-blue-500 mr-3"></i>
+                      <p className="text-blue-700">{progressStatus}</p>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-1.5 mt-3">
+                      <div className="bg-blue-500 h-1.5 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+                    </div>
+                  </div>
+                )}
               </form>
             ) : (
               <div className="results-section">
@@ -334,7 +350,11 @@ function OutfitMatcher() {
                         />
                       )}
                     </div>
-                    <p className="mt-2 text-gray-600 font-medium capitalize">{topStyle} Style</p>
+                    <p className="mt-2 text-gray-600 font-medium capitalize">
+                      {results.analysis?.style_consistency?.analysis.includes('top') ? 
+                        results.analysis.style_consistency.analysis.match(/(\w+) top/i)?.[1] : 
+                        'Detected'} Style
+                    </p>
                   </div>
                   
                   <div className="text-center">
@@ -348,7 +368,11 @@ function OutfitMatcher() {
                         />
                       )}
                     </div>
-                    <p className="mt-2 text-gray-600 font-medium capitalize">{bottomStyle} Style</p>
+                    <p className="mt-2 text-gray-600 font-medium capitalize">
+                      {results.analysis?.style_consistency?.analysis.includes('bottom') ? 
+                        results.analysis.style_consistency.analysis.match(/(\w+) bottom/i)?.[1] : 
+                        'Detected'} Style
+                    </p>
                   </div>
                 </div>
                 

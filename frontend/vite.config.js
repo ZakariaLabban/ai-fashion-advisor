@@ -6,9 +6,32 @@ module.exports = defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/analyze': 'http://localhost:7000',
-      '/tryon': 'http://localhost:7000',
-      '/api': 'http://localhost:7000',
+      '/analyze': {
+        target: 'http://localhost:7000',
+        changeOrigin: true,
+        timeout: 120000 // 2 minutes
+      },
+      '/tryon': {
+        target: 'http://localhost:7000',
+        changeOrigin: true,
+        timeout: 120000 // 2 minutes
+      },
+      '/api': {
+        target: 'http://localhost:7000',
+        changeOrigin: true,
+        timeout: 120000, // 2 minutes
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending Request to the Target:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+          });
+        }
+      },
       '/static': 'http://localhost:7000'
     }
   },
