@@ -467,8 +467,9 @@ function OutfitMatcher() {
                       )}
                     </div>
                     <p className="mt-2 text-gray-600 font-medium capitalize">
-                      {results.analysis?.style_consistency?.analysis.includes('top') ? 
-                        results.analysis.style_consistency.analysis.match(/(\w+) top/i)?.[1] : 
+                      {results.analysis?.style_consistency?.analysis && 
+                       results.analysis.style_consistency.analysis.includes('top') ? 
+                        results.analysis.style_consistency.analysis.match(/(\w+) top/i)?.[1] || 'Detected' : 
                         'Detected'} Style
                     </p>
                   </div>
@@ -485,43 +486,56 @@ function OutfitMatcher() {
                       )}
                     </div>
                     <p className="mt-2 text-gray-600 font-medium capitalize">
-                      {results.analysis?.style_consistency?.analysis.includes('bottom') ? 
-                        results.analysis.style_consistency.analysis.match(/(\w+) bottom/i)?.[1] : 
+                      {results.analysis?.style_consistency?.analysis && 
+                       results.analysis.style_consistency.analysis.includes('bottom') ? 
+                        results.analysis.style_consistency.analysis.match(/(\w+) bottom/i)?.[1] || 'Detected' : 
                         'Detected'} Style
                     </p>
                   </div>
                 </div>
                 
                 <div className="text-center mb-8">
-                  {renderMatchScore(results.match_score)}
+                  {renderMatchScore(parseInt(results.match_score) || 0)}
                 </div>
                 
                 <div className="mb-8">
                   <h3 className="text-xl font-semibold text-primary mb-4">Detailed Analysis</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {Object.entries(results.analysis || {}).map(([key, value]) => (
-                      <div key={key} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-medium text-gray-800 capitalize">
-                            {key.replace(/_/g, ' ')}
-                          </h4>
-                          <span className={`font-bold ${getScoreColor(value.score)}`}>
-                            {value.score}/100
-                          </span>
+                    {typeof results.analysis === 'object' && results.analysis !== null 
+                      ? Object.entries(results.analysis).map(([key, value]) => {
+                        const score = value && typeof value === 'object' ? (value.score || 0) : 0;
+                        const analysis = value && typeof value === 'object' ? (value.analysis || 'No analysis available') : 'No analysis available';
+                        
+                        return (
+                          <div key={key} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium text-gray-800 capitalize">
+                                {key.replace(/_/g, ' ')}
+                              </h4>
+                              <span className={`font-bold ${getScoreColor(score)}`}>
+                                {score}/100
+                              </span>
+                            </div>
+                            <p className="text-gray-600 text-sm">{analysis}</p>
+                            <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                              <div 
+                                className={`h-1.5 rounded-full ${score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                style={{ width: `${score}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                      : (
+                        <div className="bg-yellow-50 p-4 rounded-lg col-span-2 text-center text-yellow-700">
+                          <p>No detailed analysis available</p>
                         </div>
-                        <p className="text-gray-600 text-sm">{value.analysis}</p>
-                        <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                          <div 
-                            className={`h-1.5 rounded-full ${value.score >= 80 ? 'bg-green-500' : value.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                            style={{ width: `${value.score}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    }
                   </div>
                 </div>
                 
-                {results.suggestions && results.suggestions.length > 0 && (
+                {Array.isArray(results.suggestions) && results.suggestions.length > 0 && (
                   <div className="mb-8">
                     <h3 className="text-xl font-semibold text-primary mb-4">Styling Suggestions</h3>
                     <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
@@ -529,11 +543,22 @@ function OutfitMatcher() {
                         {results.suggestions.map((suggestion, index) => (
                           <li key={index} className="flex items-start">
                             <i className="fas fa-lightbulb text-blue-500 mt-1 mr-2"></i>
-                            <span>{suggestion}</span>
+                            <span>{typeof suggestion === 'string' ? suggestion : 'Styling suggestion'}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
+                  </div>
+                )}
+                
+                {DEBUG && (
+                  <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <details>
+                      <summary className="font-medium text-gray-700 cursor-pointer">Debug Information</summary>
+                      <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
+                        <pre>{JSON.stringify(results, null, 2)}</pre>
+                      </div>
+                    </details>
                   </div>
                 )}
                 

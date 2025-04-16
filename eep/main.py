@@ -2462,12 +2462,20 @@ class MatchAnalysis(BaseModel):
     trend_alignment: Optional[MatchAnalysisItem] = None
     feature_match: Optional[MatchAnalysisItem] = None
     color_histogram_match: Optional[MatchAnalysisItem] = None
+    
+    # Allow additional fields beyond the ones explicitly defined
+    class Config:
+        extra = "allow"
 
 class MatchResponse(BaseModel):
     match_score: int
-    analysis: MatchAnalysis
+    analysis: Dict[str, Dict[str, Union[int, str]]]  # More flexible structure
     suggestions: List[str]
     alternative_pairings: Optional[List[Dict[str, Any]]] = None
+    
+    # Allow additional fields beyond the ones explicitly defined
+    class Config:
+        extra = "allow"
 
 # Function to process match request
 async def process_match(
@@ -2827,6 +2835,44 @@ async def api_match_outfit(
             logger.info(f"Number of suggestions: {len(match_result['suggestions'])}")
         else:
             logger.error("No suggestions in result")
+        
+        # Log the complete response JSON for debugging (truncate if too large)
+        import json
+        response_json = json.dumps(match_result)
+        if len(response_json) > 1000:
+            logger.info(f"API match response (truncated): {response_json[:1000]}...")
+        else:
+            logger.info(f"API match response: {response_json}")
+            
+        # Validate that the response can be properly serialized as the MatchResponse model
+        try:
+            # This will fail if the structure doesn't match the model definition
+            response_obj = MatchResponse(
+                match_score=match_result["match_score"],
+                analysis=match_result["analysis"],
+                suggestions=match_result.get("suggestions", []),
+                alternative_pairings=match_result.get("alternative_pairings", [])
+            )
+            logger.info("Response successfully validated against MatchResponse model")
+        except Exception as e:
+            logger.error(f"Response validation failed: {str(e)}")
+            # Fix any issues with the response structure
+            if not isinstance(match_result["match_score"], int):
+                match_result["match_score"] = int(float(match_result["match_score"]))
+                
+            # Ensure analysis is properly structured
+            if not isinstance(match_result["analysis"], dict):
+                logger.error(f"Analysis is not a dict: {type(match_result['analysis'])}")
+                match_result["analysis"] = {
+                    "default": {
+                        "score": 50,
+                        "analysis": "Analysis data unavailable"
+                    }
+                }
+            
+            # Ensure suggestions is a list of strings
+            if "suggestions" not in match_result or not isinstance(match_result["suggestions"], list):
+                match_result["suggestions"] = ["No specific suggestions available"]
         
         # Return the match result
         logger.info("Returning API match result to frontend")
