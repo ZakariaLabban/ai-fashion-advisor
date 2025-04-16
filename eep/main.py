@@ -1183,8 +1183,9 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                                 <option value="">Any</option>
                                 <option value="casual">Casual</option>
                                 <option value="formal">Formal</option>
-                                <option value="business">Business</option>
-                                <option value="sporty">Sporty</option>
+                                <option value="athletic wear">Athletic Wear</option>
+                                <option value="streetwear">Streetwear</option>
+                                <option value="other">Other</option>
                             </select>
                         </div>
                         
