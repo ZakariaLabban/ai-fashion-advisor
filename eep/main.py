@@ -19,6 +19,8 @@ from PIL import Image
 import aiofiles
 import json
 import traceback
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.spatial.distance import euclidean
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -72,6 +74,16 @@ class DetectionInfo(BaseModel):
     crop_path: Optional[str] = None
     features: Optional[List[float]] = None
     color_histogram: Optional[List[float]] = None
+    dominant_colors: Optional[List[List[int]]] = None
+
+class Detection(BaseModel):
+    class_name: str
+    confidence: float
+    bbox: List[int] = [0, 0, 0, 0]
+    crop_path: Optional[str] = None
+    features: List[float] = []
+    color_histogram: List[float] = []
+    dominant_colors: List[List[int]] = []
 
 class StyleInfo(BaseModel):
     style_name: str
@@ -622,14 +634,8 @@ async def check_services_health():
 
 async def save_uploaded_image(file_contents: bytes, filename: str) -> str:
     """Save uploaded image to disk and return path"""
-    # Generate a unique filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]
-    file_extension = os.path.splitext(filename)[1].lower()
-    safe_filename = f"{timestamp}_{unique_id}{file_extension}"
-    
-    # Create full path
-    file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+    # Use the exact filename that was passed in
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
     
     # Save the file
     async with aiofiles.open(file_path, 'wb') as f:
@@ -638,72 +644,73 @@ async def save_uploaded_image(file_contents: bytes, filename: str) -> str:
     return file_path
 
 async def annotate_image(image_path: str, detections: List[Any]) -> str:
-    """Annotate the original image with detection bounding boxes"""
+    """Create an annotated image with detection boxes"""
     try:
-        # Read the image
+        # Check if image exists
+        if not os.path.exists(image_path):
+            logger.error(f"Image not found: {image_path}")
+            return ""
+        
+        # Load image
         img = cv2.imread(image_path)
         if img is None:
             logger.error(f"Could not read image: {image_path}")
-            # Return just the original image path
-            base_name = os.path.basename(image_path)
-            return f"/static/uploads/{base_name}"
-            
-        # Create filename for the annotated image (always use jpg extension)
-        base_name = os.path.basename(image_path)
-        file_name_without_ext = os.path.splitext(base_name)[0]
-        annotated_filename = f"{file_name_without_ext}_annotated.jpg"
+            return ""
         
-        # Save directly to the results folder (not in a subdirectory)
-        annotated_path = os.path.join(RESULTS_FOLDER, annotated_filename)
+        # Define colors for each class
+        colors = {
+            "Shirt": (0, 255, 0),      # Green
+            "Pants/Shorts": (0, 0, 255),  # Red
+            "Shoes": (255, 0, 0),      # Blue
+            "Dress": (255, 255, 0),    # Cyan
+            "Jumpsuit": (255, 0, 255), # Magenta
+            "Jacket": (0, 255, 255),   # Yellow
+            "Hat": (128, 0, 128),      # Purple
+            "Accessory": (255, 165, 0), # Orange
+            "Socks": (165, 42, 42)     # Brown
+        }
         
-        # Draw bounding boxes
+        # Draw boxes for each detection
         for detection in detections:
-            # Handle both Dict and DetectionInfo objects
-            if isinstance(detection, dict):
-                bbox = detection["bbox"]
-                label = detection["class_name"]
-                conf = detection["confidence"]
-            else:
-                # DetectionInfo object
-                bbox = detection.bbox
-                label = detection.class_name
-                conf = detection.confidence
+            # Get detection info
+            class_name = detection.class_name if hasattr(detection, 'class_name') else detection.get('class_name', '')
+            confidence = detection.confidence if hasattr(detection, 'confidence') else detection.get('confidence', 0)
+            bbox = detection.bbox if hasattr(detection, 'bbox') else detection.get('bbox', [0, 0, 0, 0])
             
-            # Convert to integers
-            x1, y1, x2, y2 = map(int, bbox)
+            # Skip if no valid bbox
+            if not bbox or len(bbox) != 4 or sum(bbox) == 0:
+                continue
+                
+            # Extract coordinates
+            x1, y1, x2, y2 = bbox
             
-            # Draw the box
-            color = (0, 255, 0)  # Green
-            thickness = 2
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
+            # Choose color for this class
+            color = colors.get(class_name, (200, 200, 200))  # Default gray
             
-            # Add label
-            text = f"{label}: {conf:.2f}"
-            font_scale = 0.5
-            font_thickness = 1
-            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
+            # Draw rectangle
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
             
-            # Ensure label background stays within image
-            text_y = max(y1, text_size[1] + 10)
-            
-            # Draw background rectangle for text
-            cv2.rectangle(img, (x1, text_y - text_size[1] - 10), (x1 + text_size[0], text_y), (255, 255, 255), -1)
+            # Draw label background
+            text = f"{class_name} ({confidence:.2f})"
+            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+            cv2.rectangle(img, (x1, y1 - text_size[1] - 5), (x1 + text_size[0], y1), color, -1)
             
             # Draw text
-            cv2.putText(img, text, (x1, text_y - 5), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
+            cv2.putText(img, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
-        # Save the annotated image
+        # Save annotated image
+        annotated_filename = os.path.basename(image_path).replace('.', '_annotated.')
+        annotated_path = os.path.join(RESULTS_FOLDER, annotated_filename)
+        
         cv2.imwrite(annotated_path, img)
         
-        # Return just the filename instead of the full path
+        # Return relative path
         return f"/static/results/{annotated_filename}"
-        
+    
     except Exception as e:
-        logger.error(f"Error annotating image: {str(e)}")
+        logger.error(f"Error annotating image: {e}")
         logger.error(traceback.format_exc())
-        # If annotation fails, return the original image path
-        base_name = os.path.basename(image_path)
-        return f"/static/uploads/{base_name}"
+        return ""
 
 async def process_detection(client: httpx.AsyncClient, image_data: bytes, request_id: str) -> List[Dict]:
     """Call detection IEP to detect clothing items"""
@@ -742,7 +749,7 @@ async def process_style(client: httpx.AsyncClient, image_data: bytes, request_id
         response = await client.post(
             f"{STYLE_SERVICE_URL}/classify",
             files=files,
-            timeout=SERVICE_TIMEOUT
+            timeout=float(SERVICE_TIMEOUT)
         )
         
         if response.status_code != 200:
@@ -751,6 +758,8 @@ async def process_style(client: httpx.AsyncClient, image_data: bytes, request_id
         
         result = response.json()
         logger.info(f"[{request_id}] Style classification found {len(result['styles'])} styles")
+        
+        # Return actual styles from the style-iep service
         return result['styles']
     except httpx.TimeoutException:
         logger.error(f"[{request_id}] Style IEP timeout after {SERVICE_TIMEOUT}s")
@@ -872,7 +881,7 @@ async def save_crop_image(crop_data_b64: str, class_name: str, item_index: int, 
         return None
 
 @app.post("/analyze")
-async def analyze_image(request: Request, file: UploadFile = File(...)):
+async def analyze_image(request: Request, file: UploadFile = File(...), filter_type: Optional[str] = Form(None)):
     """
     Analyze clothing in an uploaded image.
     
@@ -880,6 +889,7 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
     1. Detects clothing items using the detection IEP
     2. Classifies style using the style IEP
     3. Extracts features from each detected item using the feature IEP
+    4. Optionally filters by clothing type (e.g., "Shirt", "Pants/Shorts")
     """
     # Generate request ID
     request_id = str(uuid.uuid4())
@@ -896,80 +906,82 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         relative_image_path = f"/static/uploads/{os.path.basename(image_path)}"
         
         async with httpx.AsyncClient() as client:
-            # 1. Call detection IEP
+            # 1. Detect clothing items
             try:
-                detections_raw = await process_detection(client, contents, request_id)
-            except Exception as e:
-                logger.error(f"[{request_id}] Detection error: {str(e)}")
-                # For API calls, return JSON error
-                if "application/json" in request.headers.get("content-type", ""):
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": "Detection service error", "detail": str(e)}
-                    )
-                # For web requests, raise HTTPException which will be caught in outer try/except
-                raise e
-            
-            # 2. Call style IEP (in parallel with feature extraction)
-            style_task = asyncio.create_task(process_style(client, contents, request_id))
-            
-            # 3. Process each detection to extract features
-            detections = []
-            feature_tasks = []
-            
-            for i, det in enumerate(detections_raw):
-                # Save crop image if available
-                crop_path = None
-                if det.get('crop_data'):
-                    crop_path = await save_crop_image(
-                        det['crop_data'], 
-                        det['class_name'], 
-                        i, 
-                        request_id
-                    )
-                    
-                    # Create task for feature extraction from the crop
-                    crop_data = base64.b64decode(det['crop_data'])
-                    task = process_feature_extraction(client, crop_data, request_id, i)
-                    feature_tasks.append((i, task))
+                detections = await process_detection(client, contents, request_id)
                 
-                # Create detection info (without features yet)
-                detection = DetectionInfo(
-                    class_name=det['class_name'],
-                    class_id=det['class_id'],
-                    confidence=det['confidence'],
-                    bbox=det['bbox'],
-                    crop_path=crop_path
-                )
-                detections.append(detection)
-            
-            # 4. Wait for style results
-            try:
-                styles_raw = await style_task
-                styles = [StyleInfo(**style) for style in styles_raw]
+                # Filter by clothing type if specified
+                if filter_type:
+                    logger.info(f"[{request_id}] Filtering detections by type: {filter_type}")
+                    detections = filter_detections_by_type(detections, filter_type)
+                    if not detections:
+                        logger.warning(f"[{request_id}] No detections of type '{filter_type}' found")
+                
+                logger.info(f"[{request_id}] Detection found {len(detections)} items")
             except Exception as e:
-                logger.error(f"[{request_id}] Style classification error: {str(e)}")
-                # Use a default empty style list
-                styles = []
-                # For API calls, don't fail completely, just log and continue
-                if "application/json" in request.headers.get("content-type", ""):
-                    logger.warning(f"[{request_id}] Continuing with empty style list")
-                else:
-                    # For web requests, raise the exception to show error page
-                    raise e
+                logger.error(f"[{request_id}] Detection error: {e}")
+                raise HTTPException(status_code=500, detail=f"Detection error: {str(e)}")
+            
+            # 2. Classify style for the entire image
+            try:
+                styles = await process_style(client, contents, request_id)
+                logger.info(f"[{request_id}] Style classification found {len(styles)} styles")
+            except Exception as e:
+                logger.error(f"[{request_id}] Style classification error: {e}")
+                styles = []  # Continue with empty styles rather than failing
+            
+            # 3. Extract features for each detection
+            feature_tasks = []
+            for i, detection in enumerate(detections):
+                if "crop_data" in detection and detection["crop_data"]:
+                    try:
+                        # Decode crop data
+                        import base64
+                        crop_bytes = base64.b64decode(detection["crop_data"])
+                        
+                        # Schedule feature extraction
+                        task = asyncio.create_task(process_features(client, crop_bytes, f"{request_id}_det{i}"))
+                        feature_tasks.append((i, task))
+                        
+                        # Save crop for display
+                        crop_path = os.path.join(UPLOAD_FOLDER, f"crop_{request_id}_{i}.jpg")
+                        async with aiofiles.open(crop_path, 'wb') as f:
+                            await f.write(crop_bytes)
+                        detection["crop_path"] = f"/static/uploads/crop_{request_id}_{i}.jpg"
+                    except Exception as e:
+                        logger.error(f"[{request_id}] Error processing crop for detection {i}: {e}")
+            
+            # 4. Convert detections to Pydantic models for type safety
+            detection_models = []
+            for i, detection in enumerate(detections):
+                detection_model = Detection(
+                    class_name=detection["class_name"],
+                    confidence=detection["confidence"],
+                    bbox=detection.get("bbox", [0, 0, 0, 0]),
+                    crop_path=detection.get("crop_path", ""),
+                    features=[],  # Will be filled later
+                    color_histogram=[],  # Will be filled later
+                    dominant_colors=[]  # Will be filled later
+                )
+                detection_models.append(detection_model)
+            
             
             # 5. Wait for all feature extraction tasks and add results to detections
             for i, task in feature_tasks:
                 try:
                     features_result = await task
-                    detections[i].features = features_result['features']
-                    detections[i].color_histogram = features_result['color_histogram']
+                    detection_models[i].features = features_result.get('features', [])
+                    detection_models[i].color_histogram = features_result.get('color_histogram', [])
+                    
+                    # Add dominant colors if available
+                    if 'dominant_colors' in features_result:
+                        detection_models[i].dominant_colors = features_result['dominant_colors']
                 except Exception as e:
                     logger.error(f"[{request_id}] Failed to extract features for detection {i}: {e}")
                     # Continue without features - don't fail the whole request
             
             # 6. Create annotated image
-            annotated_path = await annotate_image(image_path, detections)
+            annotated_path = await annotate_image(image_path, detection_models)
             
             # Calculate total processing time
             processing_time = time.time() - start_time
@@ -982,8 +994,8 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                 "request_id": request_id,
                 "original_image_path": relative_image_path,
                 "annotated_image_path": annotated_path,
-                "detections": [d.dict() for d in detections],
-                "styles": [s.dict() for s in styles],
+                "detections": [d.dict() for d in detection_models],
+                "styles": [s for s in styles],
                 "processing_time": processing_time,
                 "timestamp": datetime.now().isoformat()
             }
@@ -996,7 +1008,7 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                     request_id=request_id,
                     original_image_path=relative_image_path,
                     annotated_image_path=annotated_path,
-                    detections=detections,
+                    detections=detection_models,
                     styles=styles,
                     processing_time=processing_time,
                     timestamp=datetime.now().isoformat()
@@ -1010,7 +1022,7 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                 request_id=request_id,
                 original_img=relative_image_path,
                 annotated_img=annotated_path,
-                detections=detections,
+                detections=detection_models,
                 styles=styles,
                 processing_time=processing_time,
                 timestamp=datetime.now().isoformat()
@@ -2885,6 +2897,519 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
     """
     
     return html
+
+# Add this new function for calculating similarities
+def calculate_similarity(vector1: List[float], vector2: List[float], method: str = "cosine") -> float:
+    """
+    Calculate similarity between two feature vectors or histograms.
+    
+    Args:
+        vector1: First feature vector or histogram
+        vector2: Second feature vector or histogram
+        method: Similarity method - "cosine" or "euclidean"
+    
+    Returns:
+        Similarity score between 0 and 1 (1 = most similar)
+    """
+    if not vector1 or not vector2:
+        return 0.0
+    
+    # Convert to numpy arrays
+    v1 = np.array(vector1).reshape(1, -1)
+    v2 = np.array(vector2).reshape(1, -1)
+    
+    # Calculate similarity based on chosen method
+    if method == "cosine":
+        # Cosine similarity is already between -1 and 1, with 1 being most similar
+        # We normalize to 0-1 range
+        similarity = float(cosine_similarity(v1, v2)[0][0])
+        # Convert from -1...1 to 0...1 range
+        normalized = (similarity + 1) / 2
+        return normalized
+    elif method == "euclidean":
+        # Euclidean distance needs to be converted to similarity
+        # We use a decay function to convert distance to similarity
+        distance = euclidean(v1.flatten(), v2.flatten())
+        # Convert distance to similarity score (0-1)
+        # Using exponential decay: e^(-distance)
+        similarity = np.exp(-distance)
+        return float(similarity)
+    else:
+        raise ValueError(f"Unsupported similarity method: {method}")
+
+# Add this new function for filtering detections by clothing type
+def filter_detections_by_type(detections: List[Dict], clothing_type: str) -> List[Dict]:
+    """
+    Filter detected clothing items by their type.
+    
+    Args:
+        detections: List of detection objects
+        clothing_type: Type of clothing to filter by (e.g., "Shirt", "Pants/Shorts")
+    
+    Returns:
+        Filtered list of detections
+    """
+    if not clothing_type or not detections:
+        return detections
+    
+    return [d for d in detections if d.get("class_name", "") == clothing_type]
+
+@app.post("/api/garment_similarity")
+async def calculate_garment_similarity(
+    request: Request,
+    shirt_file: UploadFile = File(None),
+    pants_file: UploadFile = File(None),
+    method: str = Form("cosine"),
+    weight_features: float = Form(0.7),
+    weight_histogram: float = Form(0.3)
+):
+    """
+    Calculate similarity between a shirt and pants based on feature vectors and color histograms.
+    
+    Args:
+        shirt_file: Image of shirt garment
+        pants_file: Image of pants garment
+        method: Similarity method (cosine or euclidean)
+        weight_features: Weight for feature similarity (0-1)
+        weight_histogram: Weight for color histogram similarity (0-1)
+    
+    Returns:
+        Similarity scores and analysis
+    """
+    try:
+        request_id = str(uuid.uuid4())
+        start_time = time.time()
+        
+        # Validate inputs
+        if not shirt_file and not pants_file:
+            raise HTTPException(status_code=400, detail="At least one garment image must be provided")
+        
+        # Validate weights (must sum to 1)
+        if abs(weight_features + weight_histogram - 1.0) > 0.01:
+            raise HTTPException(status_code=400, detail="Weights must sum to 1.0")
+            
+        # Validate method
+        valid_methods = ["cosine", "euclidean"]
+        if method not in valid_methods:
+            raise HTTPException(status_code=400, detail=f"Method must be one of {valid_methods}")
+        
+        # Process each provided garment image
+        shirt_results = None
+        pants_results = None
+        
+        async with httpx.AsyncClient() as client:
+            # Process shirt if provided
+            if shirt_file:
+                logger.info(f"[{request_id}] Processing shirt image")
+                contents = await shirt_file.read()
+                
+                # First detect clothing items
+                detections = await process_detection(client, contents, request_id)
+                
+                # Filter for shirts only
+                shirt_detections = filter_detections_by_type(detections, "Shirt")
+                if not shirt_detections:
+                    raise HTTPException(status_code=400, detail="No shirt detected in the image")
+                
+                # Use first detected shirt
+                shirt_detection = shirt_detections[0]
+                
+                # Extract features for the shirt
+                shirt_crop_data = shirt_detection.get("crop_data")
+                if not shirt_crop_data:
+                    raise HTTPException(status_code=500, detail="Shirt crop data not available")
+                    
+                # Decode crop data
+                import base64
+                shirt_crop_bytes = base64.b64decode(shirt_crop_data)
+                
+                # Extract features and color histogram
+                shirt_features = await process_features(client, shirt_crop_bytes, request_id)
+                
+                # Get style for the shirt
+                shirt_styles = await process_style(client, shirt_crop_bytes, request_id)
+                
+                shirt_results = {
+                    "detection": shirt_detection,
+                    "features": shirt_features.get("features", []),
+                    "color_histogram": shirt_features.get("color_histogram", []),
+                    "styles": shirt_styles
+                }
+            
+            # Process pants if provided
+            if pants_file:
+                logger.info(f"[{request_id}] Processing pants image")
+                contents = await pants_file.read()
+                
+                # First detect clothing items
+                detections = await process_detection(client, contents, request_id)
+                
+                # Filter for pants only
+                pants_detections = filter_detections_by_type(detections, "Pants/Shorts")
+                if not pants_detections:
+                    raise HTTPException(status_code=400, detail="No pants detected in the image")
+                
+                # Use first detected pants
+                pants_detection = pants_detections[0]
+                
+                # Extract features for the pants
+                pants_crop_data = pants_detection.get("crop_data")
+                if not pants_crop_data:
+                    raise HTTPException(status_code=500, detail="Pants crop data not available")
+                    
+                # Decode crop data
+                import base64
+                pants_crop_bytes = base64.b64decode(pants_crop_data)
+                
+                # Extract features and color histogram
+                pants_features = await process_features(client, pants_crop_bytes, request_id)
+                
+                # Get style for the pants
+                pants_styles = await process_style(client, pants_crop_bytes, request_id)
+                
+                pants_results = {
+                    "detection": pants_detection,
+                    "features": pants_features.get("features", []),
+                    "color_histogram": pants_features.get("color_histogram", []),
+                    "styles": pants_styles
+                }
+        
+        # Calculate similarity if both items are provided
+        similarity_results = {}
+        if shirt_results and pants_results:
+            # Calculate feature similarity
+            feature_similarity = calculate_similarity(
+                shirt_results["features"],
+                pants_results["features"],
+                method=method
+            )
+            
+            # Calculate color histogram similarity
+            color_similarity = calculate_similarity(
+                shirt_results["color_histogram"],
+                pants_results["color_histogram"],
+                method=method
+            )
+            
+            # Calculate weighted total similarity
+            total_similarity = (weight_features * feature_similarity) + (weight_histogram * color_similarity)
+            
+            # Prepare analysis
+            similarity_analysis = {
+                "method": method,
+                "feature_similarity": feature_similarity,
+                "color_similarity": color_similarity,
+                "total_similarity": total_similarity,
+                "weights": {
+                    "features": weight_features,
+                    "color_histogram": weight_histogram
+                }
+            }
+            
+            # Add similarity info
+            similarity_results = similarity_analysis
+        
+        # Prepare response
+        response = {
+            "request_id": request_id,
+            "shirt": shirt_results,
+            "pants": pants_results,
+            "similarity": similarity_results,
+            "processing_time": time.time() - start_time
+        }
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error calculating garment similarity: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error calculating garment similarity: {str(e)}")
+
+# Add new function to get dominant colors for trend analysis using K-means
+def extract_dominant_colors(image_data: bytes, n_colors: int = 3) -> List[List[int]]:
+    """
+    Extract dominant colors from an image using K-means clustering.
+    
+    Args:
+        image_data: Image data as bytes
+        n_colors: Number of dominant colors to extract
+    
+    Returns:
+        List of RGB color values sorted by dominance
+    """
+    try:
+        # Decode image
+        import cv2
+        img = cv2.imdecode(np.frombuffer(image_data, np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            logger.error("Failed to decode image for color extraction")
+            return []
+        
+        # Convert to RGB for analysis
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # Reshape to pixels
+        pixels = img_rgb.reshape(-1, 3)
+        
+        # Use K-means to find dominant colors
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(n_clusters=n_colors, n_init=10)
+        kmeans.fit(pixels)
+        
+        # Get colors and their percentages
+        colors = kmeans.cluster_centers_.astype(int)
+        counts = np.bincount(kmeans.labels_)
+        percentages = counts / len(pixels)
+        
+        # Sort by percentage (highest first)
+        sorted_indices = np.argsort(percentages)[::-1]
+        dominant_colors = [colors[i].tolist() for i in sorted_indices]
+        
+        return dominant_colors
+    except Exception as e:
+        logger.error(f"Error extracting dominant colors: {str(e)}")
+        return []
+
+# Modify process_features to ensure it returns the expected format
+async def process_features(client: httpx.AsyncClient, image_data: bytes, request_id: str) -> Dict:
+    """Call feature IEP to extract features and color histogram"""
+    try:
+        logger.info(f"[{request_id}] Sending request to Feature IEP")
+        files = {'file': ('image.jpg', image_data, 'image/jpeg')}
+        
+        response = await client.post(
+            f"{FEATURE_SERVICE_URL}/extract",
+            files=files,
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"[{request_id}] Feature IEP error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=response.status_code, detail="Feature extraction service error")
+        
+        result = response.json()
+        logger.info(f"[{request_id}] Feature extraction complete: {len(result.get('features', []))} features, {len(result.get('color_histogram', []))} histogram bins")
+        
+        # Extract dominant colors for trend analysis
+        dominant_colors = extract_dominant_colors(image_data)
+        
+        # Add dominant colors to the result
+        result["dominant_colors"] = dominant_colors
+        
+        return result
+    except httpx.TimeoutException:
+        logger.error(f"[{request_id}] Feature IEP timeout after {SERVICE_TIMEOUT}s")
+        raise HTTPException(status_code=504, detail="Feature extraction service timeout")
+    except Exception as e:
+        logger.error(f"[{request_id}] Feature IEP error: {e}")
+        raise HTTPException(status_code=500, detail=f"Feature extraction error: {str(e)}")
+
+# Add this new endpoint for trend analysis
+@app.post("/api/trend_analysis")
+async def analyze_trends(
+    request: Request,
+    file: UploadFile = File(...),
+    n_clusters: int = Form(5)
+):
+    """
+    Analyze color trends in an uploaded fashion image using K-means clustering.
+    
+    This endpoint:
+    1. Processes the uploaded image
+    2. Extracts dominant colors using K-means clustering
+    3. Returns color analysis and trend information
+    
+    Args:
+        file: The uploaded fashion image
+        n_clusters: Number of color clusters to extract (default: 5)
+    
+    Returns:
+        JSON with trend analysis information
+    """
+    try:
+        request_id = str(uuid.uuid4())
+        logger.info(f"[{request_id}] Starting trend analysis for file: {file.filename}")
+        
+        start_time = time.time()
+        
+        # Read uploaded file
+        contents = await file.read()
+        
+        # Save the original image
+        image_path = await save_uploaded_image(contents, file.filename)
+        relative_image_path = f"/static/uploads/{os.path.basename(image_path)}"
+        
+        # Extract dominant colors using K-means
+        dominant_colors = extract_dominant_colors(contents, n_colors=n_clusters)
+        
+        # Convert RGB values to hex for better display
+        color_hex = ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in dominant_colors]
+        
+        # Analyze each color to get its name and family
+        color_analysis = []
+        for i, color in enumerate(dominant_colors):
+            r, g, b = color
+            
+            # Convert RGB to HSV for better color analysis
+            import colorsys
+            h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+            
+            # Determine color family
+            color_family = get_color_family([r, g, b])
+            
+            # Determine if it's a trending color (simplified logic)
+            # In a real system, this would compare against a database of trending colors
+            is_trending = is_trending_color(color_family, h, s, v)
+            
+            color_analysis.append({
+                "rgb": color,
+                "hex": color_hex[i],
+                "family": color_family,
+                "trending": is_trending,
+                "trend_score": calculate_trend_score(color_family, h, s, v)
+            })
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Return trend analysis
+        return {
+            "request_id": request_id,
+            "image_path": relative_image_path,
+            "dominant_colors": color_analysis,
+            "trend_summary": generate_trend_summary(color_analysis),
+            "processing_time": processing_time,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] Trend analysis error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Trend analysis error: {str(e)}")
+
+def get_color_family(rgb):
+    """Determine the color family of an RGB value"""
+    r, g, b = rgb
+    
+    # Convert RGB to HSV
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+    
+    # Convert hue to degrees (0-360)
+    h_degrees = h * 360
+    
+    # Determine color family based on HSV
+    if s < 0.15 and v > 0.8:
+        return "white"
+    elif s < 0.15 and v < 0.2:
+        return "black"
+    elif s < 0.15:
+        return "gray"
+    elif h_degrees < 30 or h_degrees > 330:
+        return "red"
+    elif h_degrees < 90:
+        return "yellow"
+    elif h_degrees < 150:
+        return "green"
+    elif h_degrees < 210:
+        return "cyan"
+    elif h_degrees < 270:
+        return "blue"
+    elif h_degrees < 330:
+        return "magenta"
+    else:
+        return "unknown"
+
+def is_trending_color(color_family, h, s, v):
+    """
+    Determine if a color is trending based on current fashion trends.
+    This is a simplified version that would be replaced with actual trend data.
+    """
+    # Current trending colors (2023-2024 trends, simplified)
+    # These would be updated regularly from fashion trend sources
+    trending_colors = {
+        "red": True,        # Fiery reds
+        "magenta": True,    # Viva Magenta (Pantone 2023)
+        "yellow": True,     # Sunshine yellow
+        "green": True,      # Digital lavender
+        "cyan": True,       # Tranquil blue
+        "blue": True,       # Blue periwinkle
+    }
+    
+    # Trendy saturation and values vary by season
+    # This is simplified and would be more complex in real implementation
+    is_trendy_saturation = s > 0.6  # Vibrant colors are trending
+    is_trendy_value = v > 0.7       # Bright colors are trending
+    
+    # Check if the color family is trending and meets other trend criteria
+    return trending_colors.get(color_family, False) and (is_trendy_saturation or is_trendy_value)
+
+def calculate_trend_score(color_family, h, s, v):
+    """Calculate a trend score from 0-100 for a color"""
+    # Base score from color family
+    base_scores = {
+        "red": 85,
+        "magenta": 90,
+        "yellow": 80,
+        "green": 75,
+        "cyan": 70,
+        "blue": 80,
+        "black": 70,
+        "white": 65,
+        "gray": 60
+    }
+    
+    # Get base score for this color family
+    base_score = base_scores.get(color_family, 50)
+    
+    # Adjust for saturation and value
+    saturation_bonus = 20 * s if s > 0.5 else 0  # Bonus for vibrant colors
+    value_penalty = 15 * (1 - v) if v < 0.3 else 0  # Penalty for very dark colors
+    
+    # Calculate final score
+    trend_score = base_score + saturation_bonus - value_penalty
+    
+    # Ensure score is between 0-100
+    return max(0, min(100, trend_score))
+
+def generate_trend_summary(color_analysis):
+    """Generate a summary of the trend analysis"""
+    # Count trending colors
+    trending_colors = [c for c in color_analysis if c["trending"]]
+    num_trending = len(trending_colors)
+    total_colors = len(color_analysis)
+    
+    # Calculate average trend score
+    if total_colors > 0:
+        avg_trend_score = sum(c["trend_score"] for c in color_analysis) / total_colors
+    else:
+        avg_trend_score = 0
+    
+    # Generate appropriate message
+    if num_trending > total_colors / 2:
+        message = "This item features highly trendy colors for the current season."
+    elif num_trending > 0:
+        message = "This item contains some trendy colors mixed with classic ones."
+    else:
+        if avg_trend_score > 60:
+            message = "This item has timeless colors that never go out of style."
+        else:
+            message = "This item's colors are not aligned with current trends."
+    
+    return {
+        "trending_colors_count": num_trending,
+        "total_colors": total_colors,
+        "trend_score": avg_trend_score,
+        "summary": message
+    }
+
+class Detection(BaseModel):
+    class_name: str
+    confidence: float
+    bbox: List[int] = [0, 0, 0, 0]
+    crop_path: Optional[str] = None
+    features: List[float] = []
+    color_histogram: List[float] = []
+    dominant_colors: List[List[int]] = []
 
 if __name__ == "__main__":
     import uvicorn
