@@ -40,7 +40,7 @@ function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {/* Card 1 */}
             <div className="card group">
               <div className="h-48 bg-gray-200 rounded-lg mb-4 overflow-hidden">
@@ -92,6 +92,24 @@ function Home() {
               </p>
               <Link to="/chatbot" className="text-secondary font-medium hover:underline inline-flex items-center">
                 Chat Now <i className="fas fa-arrow-right ml-1"></i>
+              </Link>
+            </div>
+            
+            {/* Card 4 - New Outfit Matcher */}
+            <div className="card group">
+              <div className="h-48 bg-gray-200 rounded-lg mb-4 overflow-hidden">
+                <img 
+                  src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  alt="Outfit Matcher" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              </div>
+              <h3 className="text-xl font-semibold text-primary mb-2">Outfit Matcher</h3>
+              <p className="text-gray-600 mb-4">
+                Find out how well your garments match each other and get intelligent styling suggestions.
+              </p>
+              <Link to="/outfit-matcher" className="text-secondary font-medium hover:underline inline-flex items-center">
+                Match Now <i className="fas fa-arrow-right ml-1"></i>
               </Link>
             </div>
           </div>

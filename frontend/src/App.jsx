@@ -5,6 +5,7 @@ import Home from './pages/Home'
 import Analyze from './pages/Analyze'
 import VirtualTryOn from './pages/VirtualTryOn'
 import Chatbot from './pages/Chatbot'
+import OutfitMatcher from './pages/OutfitMatcher'
 
 function App() {
   const location = useLocation();
@@ -32,6 +33,7 @@ function App() {
         <Route path="analyze" element={<Analyze />} />
         <Route path="virtual-tryon" element={<VirtualTryOn />} />
         <Route path="chatbot" element={<Chatbot />} />
+        <Route path="outfit-matcher" element={<OutfitMatcher />} />
       </Route>
     </Routes>
   )
