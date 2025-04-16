@@ -38,7 +38,7 @@ function Navbar() {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/analyze" className="nav-link">Analyze</Link>
             <Link to="/virtual-tryon" className="nav-link">Fitting Room</Link>
-            <Link to="/outfit-matcher" className="nav-link">Outfit Matcher</Link>
+            <Link to="/outfit-matcher" className="nav-link font-semibold text-blue-600 hover:text-blue-800">Outfit Matcher</Link>
             <Link to="/chatbot" className="nav-link">Elegance Bot</Link>
             <button onClick={() => scrollToSection('#about')} className="nav-link">About</button>
             <button onClick={() => scrollToSection('#contact')} className="nav-link">
@@ -66,7 +66,7 @@ function Navbar() {
           <Link to="/" className="block px-3 py-2 text-base font-medium hover:bg-gray-50">Home</Link>
           <Link to="/analyze" className="block px-3 py-2 text-base font-medium hover:bg-gray-50">Analyze</Link>
           <Link to="/virtual-tryon" className="block px-3 py-2 text-base font-medium hover:bg-gray-50">Fitting Room</Link>
-          <Link to="/outfit-matcher" className="block px-3 py-2 text-base font-medium hover:bg-gray-50">Outfit Matcher</Link>
+          <Link to="/outfit-matcher" className="block px-3 py-2 text-base font-medium text-blue-600 bg-blue-50 hover:bg-blue-100">Outfit Matcher</Link>
           <Link to="/chatbot" className="block px-3 py-2 text-base font-medium hover:bg-gray-50">Elegance Bot</Link>
           <button onClick={() => scrollToSection('#about')} className="w-full text-left block px-3 py-2 text-base font-medium hover:bg-gray-50">About</button>
           <button onClick={() => scrollToSection('#contact')} className="w-full text-left block px-3 py-2 text-base font-medium hover:bg-gray-50">Contact</button>
