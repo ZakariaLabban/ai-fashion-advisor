@@ -7,5 +7,4 @@ scikit-learn>=1.2.0
 pillow>=10.0.0
 pydantic>=2.3.0
 opencv-python-headless>=4.8.0
-python-dotenv>=1.0.0
-colorsys-extended>=0.0.5 
+python-dotenv>=1.0.0 
