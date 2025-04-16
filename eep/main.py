@@ -2544,9 +2544,10 @@ async def process_match(
         # Find shirt in topwear
         top_shirt = None
         top_shirt_crop = None
+        
         if "detections" in top_detection_result:
             for detection in top_detection_result["detections"]:
-                if detection.get("class_name") == "Shirt":
+                if detection.get("class_name") in ["Shirt", "T-Shirt", "Shirt/T-Shirt", "Top"]:
                     top_shirt = detection
                     # Extract crop from the image using bbox
                     try:
@@ -2571,9 +2572,10 @@ async def process_match(
                         logger.error(f"Error extracting top shirt crop: {str(e)}")
                     break
         
-        # Find pants/shorts in bottomwear
+        # Find pants in bottomwear
         bottom_pants = None
         bottom_pants_crop = None
+        
         if "detections" in bottom_detection_result:
             for detection in bottom_detection_result["detections"]:
                 if detection.get("class_name") in ["Pants", "Shorts", "Pants/Shorts"]:
@@ -2658,48 +2660,70 @@ async def process_match(
             sorted_styles = sorted(bottom_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
             bottom_style = sorted_styles[0]["style_name"].lower()
         
-        # Extract feature vectors and histograms
-        top_vector = []
-        bottom_vector = []
-        top_histogram = []
-        bottom_histogram = []
+        # Get feature vectors
+        top_vector = top_feature_result.get("features", None)
+        bottom_vector = bottom_feature_result.get("features", None)
         
-        if "error" not in top_feature_result:
-            top_vector = top_feature_result.get("features", [])
-            top_histogram = top_feature_result.get("color_histogram", [])
+        # Get color histograms
+        top_histogram = top_feature_result.get("color_histogram", None)
+        bottom_histogram = bottom_feature_result.get("color_histogram", None)
         
-        if "error" not in bottom_feature_result:
-            bottom_vector = bottom_feature_result.get("features", [])
-            bottom_histogram = bottom_feature_result.get("color_histogram", [])
-        
-        # STEP 6: Create payload for match-iep
-        payload = {
+        # Build match request
+        match_request = {
             "top_style": top_style,
             "bottom_style": bottom_style,
             "top_vector": top_vector,
             "bottom_vector": bottom_vector,
             "top_histogram": top_histogram,
             "bottom_histogram": bottom_histogram,
-            # Include detection information as well
-            "top_detection": top_shirt if top_shirt else {},
-            "bottom_detection": bottom_pants if bottom_pants else {}
+            "top_detection": top_shirt or {},
+            "bottom_detection": bottom_pants or {}
         }
         
-        # STEP 7: Send to match-iep for scoring only
+        # STEP 6: Send preprocessed data to Match IEP
         logger.info("Sending preprocessed data to Match IEP")
         match_response = await client.post(
             f"{MATCH_SERVICE_URL}/compute_match",
-            json=payload,
+            json=match_request,
             timeout=SERVICE_TIMEOUT
         )
         
         if match_response.status_code != 200:
-            logger.error(f"Match service error: {match_response.text}")
-            return {"error": f"Match service error: {match_response.status_code}"}
+            logger.error(f"Match IEP error: {match_response.status_code} - {match_response.text}")
+            return {"error": "Match service error"}
         
-        return match_response.json()
+        # Get the match result
+        match_result = match_response.json()
+        
+        # Validate the match result structure
+        logger.info(f"Match result received with keys: {list(match_result.keys())}")
+        
+        # Check if expected fields are present
+        required_fields = ["match_score", "analysis", "suggestions"]
+        missing_fields = [field for field in required_fields if field not in match_result]
+        
+        if missing_fields:
+            logger.error(f"Match result missing required fields: {missing_fields}")
+            # Add default values for missing fields to prevent frontend errors
+            for field in missing_fields:
+                if field == "match_score":
+                    match_result["match_score"] = 50  # Default score
+                elif field == "analysis":
+                    match_result["analysis"] = {
+                        "default": {
+                            "score": 50,
+                            "analysis": "Analysis data unavailable"
+                        }
+                    }
+                elif field == "suggestions":
+                    match_result["suggestions"] = ["No specific suggestions available"]
+        
+        # Return the validated match result
+        return match_result
+        
     except Exception as e:
         logger.error(f"Error in match processing: {str(e)}")
+        logger.error(traceback.format_exc())  # Add stack trace for better debugging
         return {"error": f"Match processing error: {str(e)}"}
 
 @app.post("/match")
@@ -2779,16 +2803,38 @@ async def api_match_outfit(
         
         # Process match
         async with httpx.AsyncClient() as client:
+            logger.info(f"API match request: Sending to process_match")
             match_result = await process_match(client, topwear_content, bottomwear_content)
         
         # Check for errors
         if "error" in match_result:
+            logger.error(f"Error in match result: {match_result['error']}")
             raise HTTPException(status_code=500, detail=match_result["error"])
         
+        # Log the structure of the match_result for debugging
+        logger.info(f"Match result keys: {list(match_result.keys())}")
+        if "match_score" in match_result:
+            logger.info(f"Match score: {match_result['match_score']}")
+        else:
+            logger.error("No match_score in result")
+            
+        if "analysis" in match_result:
+            logger.info(f"Analysis keys: {list(match_result['analysis'].keys())}")
+        else:
+            logger.error("No analysis in result")
+            
+        if "suggestions" in match_result:
+            logger.info(f"Number of suggestions: {len(match_result['suggestions'])}")
+        else:
+            logger.error("No suggestions in result")
+        
+        # Return the match result
+        logger.info("Returning API match result to frontend")
         return match_result
         
     except Exception as e:
         logger.error(f"Error processing API match request: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
 
 def generate_match_result_html(topwear_img, bottomwear_img, match_result, processing_time, timestamp):

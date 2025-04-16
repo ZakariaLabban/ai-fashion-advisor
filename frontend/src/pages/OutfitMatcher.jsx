@@ -122,17 +122,30 @@ function OutfitMatcher() {
         throw new Error('No data received from server')
       }
       
+      // Always save the response data for debugging, regardless of format
+      setDebugInfo({
+        message: 'Raw server response',
+        data: response.data
+      });
+      
       // Log the response data for debugging
       debugLog('Response data', response.data);
       
-      // Safety check to make sure response data has the expected format
-      if (!response.data.match_score || !response.data.analysis) {
-        setDebugInfo({
-          message: 'Invalid response format',
-          data: response.data
-        });
-        throw new Error('Invalid response format. The server returned unexpected data structure.');
+      // Detailed validation of response structure
+      if (!response.data.match_score) {
+        debugLog('Missing match_score in response', response.data);
+        throw new Error('Invalid response format: Missing match_score field');
       }
+      
+      if (!response.data.analysis) {
+        debugLog('Missing analysis in response', response.data);
+        throw new Error('Invalid response format: Missing analysis field');
+      }
+      
+      debugLog('Response validation passed', { 
+        match_score: response.data.match_score,
+        analysis_keys: Object.keys(response.data.analysis)
+      });
       
       setProgressStatus('Rendering results...')
       
@@ -179,10 +192,13 @@ function OutfitMatcher() {
       } else {
         // Something happened in setting up the request
         setError(err.message || 'Failed to match outfit. Please try again.');
-        setDebugInfo({
-          message: 'General error',
-          error: err
-        });
+        // Keep any debug info that was set earlier
+        if (!debugInfo) {
+          setDebugInfo({
+            message: 'General error',
+            error: err.toString()
+          });
+        }
       }
     } finally {
       setLoading(false)
@@ -383,11 +399,24 @@ function OutfitMatcher() {
                       Error
                     </p>
                     <p>{error}</p>
-                    {debugInfo && DEBUG && (
+                    {DEBUG && (
                       <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
                         <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
                       </div>
                     )}
+                  </div>
+                )}
+                
+                {/* Always show debug info in debug mode, even without error */}
+                {!error && debugInfo && DEBUG && (
+                  <div className="mt-6 p-4 bg-blue-50 text-blue-700 rounded-md">
+                    <p className="font-medium flex items-center">
+                      <i className="fas fa-bug mr-2"></i>
+                      Debug Information
+                    </p>
+                    <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
+                      <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+                    </div>
                   </div>
                 )}
                 
