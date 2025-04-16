@@ -26,6 +26,7 @@ services:
       - virtual-tryon-iep
       - elegance-iep
       - reco-data-iep
+      - match-iep
     environment:
       - DETECTION_SERVICE_URL=http://detection-iep:8001
       - STYLE_SERVICE_URL=http://style-iep:8002
@@ -33,6 +34,7 @@ services:
       - VIRTUAL_TRYON_SERVICE_URL=http://virtual-tryon-iep:8004
       - ELEGANCE_SERVICE_URL=http://elegance-iep:8005
       - RECO_DATA_SERVICE_URL=http://reco-data-iep:8007
+      - MATCH_SERVICE_URL=http://match-iep:8008
       - SERVICE_TIMEOUT=60
 
   # Detection Internal Endpoint Processor
@@ -110,3 +112,16 @@ services:
       - ./reco_data_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
     env_file:
       - ./reco_data_iep/.env 
+      
+  # Match Analysis Internal Endpoint Processor
+  match-iep:
+    build: ./match_iep
+    container_name: match-iep
+    ports:
+      - "7008:8008"
+    volumes:
+      - ./match_iep:/app
+    environment:
+      - FEATURE_SERVICE_URL=http://feature-iep:8003
+      - STYLE_SERVICE_URL=http://style-iep:8002
+      - SERVICE_TIMEOUT=30 

@@ -47,6 +47,7 @@ FEATURE_SERVICE_URL = os.getenv("FEATURE_SERVICE_URL", "http://feature-iep:8003"
 VIRTUAL_TRYON_SERVICE_URL = os.getenv("VIRTUAL_TRYON_SERVICE_URL", "http://virtual-tryon-iep:8004")
 ELEGANCE_SERVICE_URL = os.getenv("ELEGANCE_SERVICE_URL", "http://elegance-iep:8005")
 RECO_DATA_SERVICE_URL = os.getenv("RECO_DATA_SERVICE_URL", "http://reco-data-iep:8007")
+MATCH_SERVICE_URL = os.getenv("MATCH_SERVICE_URL", "http://match-iep:8008")
 
 # Timeout for service requests (in seconds)
 SERVICE_TIMEOUT = int(os.getenv("SERVICE_TIMEOUT", "30"))
@@ -572,6 +573,8 @@ async def check_services_health():
                 check_iep_health(client, f"{FEATURE_SERVICE_URL}/health", "Feature IEP"),
                 check_iep_health(client, f"{VIRTUAL_TRYON_SERVICE_URL}/health", "Virtual Try-On IEP"),
                 check_iep_health(client, f"{ELEGANCE_SERVICE_URL}/health", "Elegance Chatbot IEP"),
+                check_iep_health(client, f"{RECO_DATA_SERVICE_URL}/health", "Recommendation Data IEP"),
+                check_iep_health(client, f"{MATCH_SERVICE_URL}/health", "Match Analysis IEP"),
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -581,6 +584,8 @@ async def check_services_health():
                 "feature": str(results[2] == True),
                 "virtual_tryon": str(results[3] == True),
                 "elegance": str(results[4] == True),
+                "reco_data": str(results[5] == True),
+                "match": str(results[6] == True),
             }
             
             all_healthy = all(s == "True" for s in services_status.values())
@@ -2430,6 +2435,122 @@ async def api_get_recommendation(request: Request, recommendation: Recommendatio
             status_code=500,
             content={"error": "Recommendation error", "detail": str(e)}
         )
+
+# Additional models for match response
+class MatchAnalysisItem(BaseModel):
+    score: int
+    analysis: str
+
+class MatchAnalysis(BaseModel):
+    color_harmony: MatchAnalysisItem
+    style_consistency: MatchAnalysisItem
+    occasion_appropriateness: MatchAnalysisItem
+    trend_alignment: MatchAnalysisItem
+
+class MatchResponse(BaseModel):
+    match_score: int
+    analysis: MatchAnalysis
+    suggestions: List[str]
+    alternative_pairings: Optional[List[Dict[str, Any]]] = None
+
+# Function to process match request
+async def process_match(
+    client: httpx.AsyncClient,
+    topwear_data: bytes,
+    bottomwear_data: bytes
+) -> Dict:
+    """
+    Process a match request between a topwear and bottomwear item
+    """
+    try:
+        # Prepare form data with files
+        form = aiofiles.tempfile.SpooledTemporaryFile()
+        form_data = {
+            "topwear": ("topwear.jpg", topwear_data, "image/jpeg"),
+            "bottomwear": ("bottomwear.jpg", bottomwear_data, "image/jpeg")
+        }
+        
+        # Send request to match IEP
+        response = await client.post(
+            f"{MATCH_SERVICE_URL}/match",
+            files=form_data,
+            timeout=SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Match service error: {response.text}")
+            return {"error": f"Match service error: {response.status_code}"}
+        
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error in match processing: {str(e)}")
+        return {"error": f"Match processing error: {str(e)}"}
+
+# Add match endpoint
+@app.post("/match", response_model=MatchResponse)
+async def match_outfit(
+    request: Request,
+    topwear: UploadFile = File(...),
+    bottomwear: UploadFile = File(...)
+):
+    """
+    Match a topwear item with a bottomwear item and evaluate compatibility
+    """
+    try:
+        # Record start time
+        start_time = time.time()
+        
+        # Get file contents
+        topwear_content = await topwear.read()
+        bottomwear_content = await bottomwear.read()
+        
+        # Process match
+        async with httpx.AsyncClient() as client:
+            match_result = await process_match(client, topwear_content, bottomwear_content)
+        
+        # Check for errors
+        if "error" in match_result:
+            raise HTTPException(status_code=500, detail=match_result["error"])
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Log result
+        logger.info(f"Match processed successfully in {processing_time:.2f}s with score {match_result['match_score']}")
+        
+        return match_result
+        
+    except Exception as e:
+        logger.error(f"Error processing match request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
+
+# Add API endpoint for match (JSON request/response)
+@app.post("/api/match", response_model=MatchResponse)
+async def api_match_outfit(
+    topwear: UploadFile = File(...),
+    bottomwear: UploadFile = File(...)
+):
+    """
+    API endpoint for matching a topwear item with a bottomwear item
+    """
+    try:
+        # Get file contents
+        topwear_content = await topwear.read()
+        bottomwear_content = await bottomwear.read()
+        
+        # Process match
+        async with httpx.AsyncClient() as client:
+            match_result = await process_match(client, topwear_content, bottomwear_content)
+        
+        # Check for errors
+        if "error" in match_result:
+            raise HTTPException(status_code=500, detail=match_result["error"])
+        
+        return match_result
+        
+    except Exception as e:
+        logger.error(f"Error processing API match request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
