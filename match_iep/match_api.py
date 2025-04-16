@@ -405,10 +405,11 @@ def generate_suggestions(analysis_results):
     feature_score = analysis_results.get("feature_match", {}).get("score", 0)
     histogram_score = analysis_results.get("color_histogram_match", {}).get("score", 0)
     
-    # Suggestions based on specific scores
+    # Color harmony suggestions (K-means)
     if color_score < 70:
-        suggestions.append("Consider items with more complementary or harmonious colors.")
+        suggestions.append("Consider items with more complementary or harmonious dominant colors.")
     
+    # Style suggestions
     if style_score < 70:
         suggestions.append("Try pieces that are more consistent in style or formality level.")
     
@@ -433,7 +434,7 @@ def generate_suggestions(analysis_results):
     random.shuffle(styling_suggestions)
     suggestions.extend(styling_suggestions[:2])
     
-    return suggestions[:4]  # Increased limit to 4 to accommodate new metrics
+    return suggestions[:4]  # Limit to 4 suggestions
 
 async def validate_clothing_types(top_image, bottom_image):
     """
@@ -932,7 +933,7 @@ async def match_outfit(
         
         # STEP 7: Calculate match metrics
         
-        # 7.1: Color harmony from dominant colors
+        # 7.1: Color harmony from dominant colors (K-means)
         color_score, color_analysis = calculate_color_harmony(top_colors, bottom_colors)
         
         # 7.2: Feature vector match
@@ -963,38 +964,35 @@ async def match_outfit(
             top_style, bottom_style, top_color_family, bottom_color_family
         )
         
-        # 7.6: Trend alignment based on style combinations
-        trend_score, trend_analysis = calculate_trend_alignment(top_style, bottom_style)
+        # NOTE: Trend alignment has been removed
         
-        # STEP 8: Calculate weighted overall match score
-        # Weights are same as before
+        # STEP 8: Calculate weighted overall match score with redistributed weights
+        # New weights giving more importance to color/feature and less to style/occasion
         weights = {
-            "color_harmony": 0.20,      # Dominant colors analysis
-            "feature_match": 0.20,      # Feature vectors from ML model
-            "color_histogram": 0.15,    # Detailed color distribution analysis
-            "style_consistency": 0.20,  # Style classification matching
-            "occasion": 0.15,           # Occasion appropriateness
-            "trend": 0.10               # Fashion trend relevance
+            "color_harmony": 0.30,      # Increased from 0.20 (dominant colors from K-means)
+            "feature_match": 0.30,      # Increased from 0.20 (feature vectors)
+            "color_histogram": 0.25,    # Increased from 0.15 (detailed color distribution)
+            "style_consistency": 0.10,  # Reduced from 0.20
+            "occasion": 0.05,           # Reduced from 0.15
+            # trend weight (0.10) has been removed and redistributed
         }
         
         # If feature or histogram scores are not available, redistribute their weights
         if feature_score == 0:
-            redistribution = weights["feature_match"] / 5
+            redistribution = weights["feature_match"] / 4  # Divide by 4 components now
             weights["feature_match"] = 0
             weights["color_harmony"] += redistribution
             weights["color_histogram"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
-            weights["trend"] += redistribution
             
         if histogram_score == 0:
-            redistribution = weights["color_histogram"] / 5
+            redistribution = weights["color_histogram"] / 4  # Divide by 4 components now
             weights["color_histogram"] = 0
             weights["color_harmony"] += redistribution
             weights["feature_match"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
-            weights["trend"] += redistribution
         
         # Calculate weighted score
         overall_score = round(
@@ -1002,8 +1000,8 @@ async def match_outfit(
             weights["feature_match"] * feature_score +
             weights["color_histogram"] * histogram_score +
             weights["style_consistency"] * style_score +
-            weights["occasion"] * occasion_score +
-            weights["trend"] * trend_score
+            weights["occasion"] * occasion_score
+            # trend score removed
         )
         
         # STEP 9: Compile analysis results
@@ -1019,11 +1017,8 @@ async def match_outfit(
             "occasion_appropriateness": {
                 "score": occasion_score,
                 "analysis": occasion_analysis
-            },
-            "trend_alignment": {
-                "score": trend_score,
-                "analysis": trend_analysis
             }
+            # trend_alignment removed
         }
         
         # Add feature and histogram analysis if available

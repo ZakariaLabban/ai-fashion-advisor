@@ -5,12 +5,11 @@ This service evaluates the matchability of clothing items, specifically determin
 ## Overview
 
 The Matching IEP analyzes clothing pairs across multiple dimensions:
-- Color harmony
+- Color harmony (K-means clustering)
 - Feature vector similarity
 - Color histogram matching
 - Style consistency
 - Occasion appropriateness
-- Trend alignment
 
 It provides a comprehensive match score along with detailed analysis and styling suggestions.
 
@@ -18,12 +17,11 @@ It provides a comprehensive match score along with detailed analysis and styling
 
 - **Topwear/Bottomwear Validation**: Ensures the provided items are correctly identified using the Style IEP
 - **Specific Garment Detection**: Uses Detection IEP to isolate specific clothing items (Shirt for topwear, Pants/Shorts for bottomwear)
-- **Color Analysis**: Evaluates color compatibility using color theory principles
+- **Dominant Color Analysis (K-means)**: Evaluates color compatibility using color theory principles and K-means clustering
 - **Feature Vector Matching**: Uses cosine similarity to compare deep learning feature embeddings from Feature IEP
 - **Advanced Color Histogram Matching**: Evaluates color distribution compatibility using both similarity and contrast metrics
 - **Style Compatibility**: Assesses style consistency between different clothing types using real style classifications from the Style IEP
 - **Occasion Matching**: Determines appropriate settings for the outfit
-- **Fashion Trend Alignment**: Evaluates how trendy the combination is
 - **Styling Suggestions**: Provides actionable recommendations for improvement
 
 ## Matching Algorithm
@@ -46,12 +44,11 @@ The overall match score is a weighted combination of:
 
 | Component | Weight | Justification |
 |-----------|--------|---------------|
-| Color Harmony | 20% | Visual perception of dominant colors is immediately noticeable |
-| Feature Match | 20% | Deep learning embeddings capture learned patterns of compatibility |
-| Color Histogram | 15% | Detailed color distribution provides nuanced color compatibility |
-| Style Consistency | 20% | Explicit style categorization ensures appropriate pairings |
-| Occasion Appropriateness | 15% | Situational context is important for outfit utility |
-| Trend Alignment | 10% | Fashion relevance affects perception but is less critical |
+| Color Harmony (K-means) | 30% | Visual perception of dominant colors is immediately noticeable |
+| Feature Match | 30% | Deep learning embeddings capture learned patterns of compatibility |
+| Color Histogram | 25% | Detailed color distribution provides nuanced color compatibility |
+| Style Consistency | 10% | Style categorization ensures appropriate pairings |
+| Occasion Appropriateness | 5% | Situational context provides additional context |
 
 If any component is unavailable (e.g., feature extraction fails), its weight is redistributed proportionally among other components.
 
@@ -110,10 +107,6 @@ Form data:
     "occasion_appropriateness": {
       "score": 85,
       "analysis": "Suitable for office environment or casual business meetings."
-    },
-    "trend_alignment": {
-      "score": 75,
-      "analysis": "Classic combination with contemporary elements."
     }
   },
   "suggestions": [

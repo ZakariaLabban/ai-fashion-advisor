@@ -2458,7 +2458,7 @@ class MatchAnalysis(BaseModel):
     color_harmony: MatchAnalysisItem
     style_consistency: MatchAnalysisItem
     occasion_appropriateness: MatchAnalysisItem
-    trend_alignment: MatchAnalysisItem
+    trend_alignment: Optional[MatchAnalysisItem] = None
     feature_match: Optional[MatchAnalysisItem] = None
     color_histogram_match: Optional[MatchAnalysisItem] = None
 
@@ -2602,7 +2602,12 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
     analysis_items_html = ""
     for key, item in analysis.items():
         # Format the category name nicely
-        category_name = key.replace('_', ' ').title()
+        if key == "color_harmony":
+            category_name = "Dominant Colors (K-means)"
+        elif key == "color_histogram_match":
+            category_name = "Color Distribution Analysis"
+        else:
+            category_name = key.replace('_', ' ').title()
         
         # Calculate percentage width for the score bar
         score = item["score"]
@@ -2638,6 +2643,15 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
         for suggestion in suggestions:
             suggestions_html += f"<li><i class='suggestion-icon'>💡</i> {suggestion}</li>"
         suggestions_html += "</ul>"
+    
+    # Add a section explaining the different color analysis methods
+    color_analysis_explanation = """
+    <div class="analysis-explanation">
+        <h3>About Color Analysis</h3>
+        <p><strong>Dominant Colors (K-means):</strong> Analyzes the primary colors extracted using K-means clustering and evaluates their harmony based on color theory principles.</p>
+        <p><strong>Color Distribution Analysis:</strong> Evaluates the detailed color histogram pattern using both similarity and entropy measures to assess overall color compatibility.</p>
+    </div>
+    """
     
     html = f"""
     <!DOCTYPE html>
@@ -2823,6 +2837,21 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
                 background-color: #f1f1f1;
                 border-radius: 5px;
             }}
+            .analysis-explanation {{
+                background-color: #f8f9fa;
+                border-left: 4px solid #3498db;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 0 5px 5px 0;
+            }}
+            .analysis-explanation h3 {{
+                margin-top: 0;
+                color: #3498db;
+            }}
+            .analysis-explanation p {{
+                margin: 10px 0;
+                line-height: 1.5;
+            }}
         </style>
     </head>
     <body>
@@ -2861,6 +2890,8 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
                     }
                 </div>
             </div>
+            
+            {color_analysis_explanation}
             
             <div class="analysis-items">
                 <h2>Detailed Analysis</h2>
