@@ -1,8 +1,9 @@
 fastapi
-uvicorn[standard]
-qdrant-client
+uvicorn
+pydantic
 mysql-connector-python
+qdrant-client
 google-api-python-client
 google-auth
-tqdm
 python-dotenv
+

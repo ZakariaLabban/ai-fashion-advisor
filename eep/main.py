@@ -11,7 +11,7 @@ import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Union
 import httpx
@@ -46,6 +46,7 @@ STYLE_SERVICE_URL = os.getenv("STYLE_SERVICE_URL", "http://style-iep:8002")
 FEATURE_SERVICE_URL = os.getenv("FEATURE_SERVICE_URL", "http://feature-iep:8003")
 VIRTUAL_TRYON_SERVICE_URL = os.getenv("VIRTUAL_TRYON_SERVICE_URL", "http://virtual-tryon-iep:8004")
 ELEGANCE_SERVICE_URL = os.getenv("ELEGANCE_SERVICE_URL", "http://elegance-iep:8005")
+RECO_DATA_SERVICE_URL = os.getenv("RECO_DATA_SERVICE_URL", "http://reco-data-iep:8007")
 
 # Timeout for service requests (in seconds)
 SERVICE_TIMEOUT = int(os.getenv("SERVICE_TIMEOUT", "30"))
@@ -84,6 +85,17 @@ class AnalysisResponse(BaseModel):
     styles: List[StyleInfo]
     processing_time: float
     timestamp: str
+
+class RecommendationRequest(BaseModel):
+    request_id: str
+    detection_id: str
+    gender: Optional[str] = None
+    style: Optional[str] = None
+    item_type: str  # "topwear" or "bottomwear"
+    operation: str  # "matching" or "similarity"
+    
+# In-memory store for analysis results
+analysis_results_store = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -747,6 +759,72 @@ async def process_feature_extraction(client: httpx.AsyncClient, crop_data: bytes
         logger.error(f"[{request_id}] Feature IEP error for crop {item_index}: {e}")
         raise HTTPException(status_code=500, detail=f"Feature extraction error: {str(e)}")
 
+async def process_recommendation(client: httpx.AsyncClient, vector: List[float], gender: Optional[str], 
+                               style: Optional[str], item_type: str, operation: str) -> bytes:
+    """
+    Process a recommendation request to the Recommendation IEP.
+    Returns the image as bytes.
+    """
+    start_time = time.time()
+    
+    # Build query params
+    params = {}
+    if gender:
+        params["gender"] = gender
+    if style:
+        params["style"] = style
+    if item_type:
+        params["type_"] = item_type
+        
+    # Build request body - send vector directly instead of in an object
+    data = vector  # Modified: Sending the vector directly instead of {"vector": vector}
+    
+    # Select the correct endpoint based on operation
+    endpoint = "matching" if operation == "matching" else "similarity"
+    
+    try:
+        # Log the request details
+        logger.info(f"Sending recommendation request to {RECO_DATA_SERVICE_URL}/{endpoint}")
+        logger.info(f"Parameters: {params}")
+        logger.info(f"Vector length: {len(vector)}")
+        
+        # Make the request to the recommendation service
+        response = await client.post(
+            f"{RECO_DATA_SERVICE_URL}/{endpoint}",
+            params=params,
+            json=data,
+            timeout=SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            error_detail = response.text
+            try:
+                error_json = response.json()
+                if "detail" in error_json:
+                    error_detail = error_json["detail"]
+            except:
+                pass
+                
+            logger.error(f"Recommendation service error: {response.status_code}, {error_detail}")
+            raise HTTPException(status_code=response.status_code, 
+                              detail=f"Recommendation service error: {error_detail}")
+        
+        # Return the image bytes directly
+        logger.info(f"Recommendation request successful, received {len(response.content)} bytes")
+        return response.content
+        
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error processing recommendation: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Error connecting to recommendation service: {str(e)}")
+    except httpx.TimeoutException:
+        logger.error(f"Timeout contacting recommendation service after {SERVICE_TIMEOUT} seconds")
+        raise HTTPException(status_code=504, detail=f"Recommendation service timeout after {SERVICE_TIMEOUT} seconds")
+    except Exception as e:
+        logger.error(f"Error processing recommendation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing recommendation: {str(e)}")
+    finally:
+        logger.info(f"Recommendation processing took {time.time() - start_time:.2f} seconds")
+
 async def save_crop_image(crop_data_b64: str, class_name: str, item_index: int, request_id: str) -> str:
     """Save a base64 encoded crop image to disk and return path"""
     try:
@@ -875,6 +953,18 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
             # Determine if it's an API call or web form submission
             content_type = request.headers.get("content-type", "")
             
+            # Store analysis results for recommendation endpoint
+            analysis_data = {
+                "request_id": request_id,
+                "original_image_path": relative_image_path,
+                "annotated_image_path": annotated_path,
+                "detections": [d.dict() for d in detections],
+                "styles": [s.dict() for s in styles],
+                "processing_time": processing_time,
+                "timestamp": datetime.now().isoformat()
+            }
+            analysis_results_store[request_id] = analysis_data
+            
             # For API calls, return JSON
             if "application/json" in content_type:
                 # Create the response object
@@ -980,6 +1070,9 @@ async def api_analyze_image(file: UploadFile = File(...)):
 def generate_result_html(request_id, original_img, annotated_img, detections, styles, processing_time, timestamp):
     """Generate HTML for displaying analysis results"""
     
+    # Define clothing types that can be used for recommendations
+    reco_capable_classes = ["Shirt", "Jumpsuit", "Pants", "Shorts", "Pants/Shorts", "Skirt", "Dress"]
+    
     styles_html = ""
     for style in styles:
         confidence_percent = style["confidence"] * 100 if isinstance(style, dict) else style.confidence * 100
@@ -1014,7 +1107,7 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
         histogram_preview = str(color_histogram[:5]) + ("..." if len(color_histogram) > 5 else "")
         
         detections_html += f'''
-        <div class="detection-box">
+        <div class="detection-box" id="detection-{i}">
             <div class="detection-header">
                 <h3>{class_name} (Confidence: {confidence:.2f})</h3>
             </div>
@@ -1030,8 +1123,60 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                 <div id="histogram_{i}" class="histogram-preview">{histogram_preview}</div>
                 <button onclick="toggleFeatures('histogram_{i}')" class="toggle-btn">Show More</button>
             </div>
-        </div>
         '''
+        
+        # Add recommendation buttons for supported garment types
+        if class_name in reco_capable_classes:
+            item_type = "topwear" if class_name in ["Shirt", "Jumpsuit"] else "bottomwear"
+            detections_html += f'''
+            <div class="recommendation-options">
+                <button id="similar-btn-{i}" class="reco-button" onclick="showRecoOptions('{i}', '{class_name}', '{item_type}')">Find Similar</button>
+                <button id="matching-btn-{i}" class="reco-button matching" onclick="showRecoOptions('{i}', '{class_name}', '{item_type}', true)">Find Matching</button>
+            </div>
+            <div id="reco-modal-{i}" class="reco-modal">
+                <div class="reco-modal-content">
+                    <span class="reco-close" onclick="closeRecoModal('{i}')">&times;</span>
+                    <h3 id="reco-title-{i}">Find Similar Items</h3>
+                    
+                    <div class="reco-tabs">
+                        <button id="similar-tab-{i}" class="reco-tab active" onclick="switchOperation('{i}', false)">Find Similar</button>
+                        <button id="matching-tab-{i}" class="reco-tab" onclick="switchOperation('{i}', true)">Find Matching</button>
+                    </div>
+                    
+                    <form id="reco-form-{i}" action="/recommendation" method="post" target="_blank">
+                        <input type="hidden" name="request_id" value="{request_id}">
+                        <input type="hidden" name="detection_id" value="{i}">
+                        <input type="hidden" name="operation" id="operation-{i}" value="similarity">
+                        <input type="hidden" name="item_type" id="item-type-{i}" data-original-type="{item_type}" value="{item_type}">
+                        <input type="hidden" id="item-class-{i}" value="{class_name}">
+                        
+                        <div class="reco-form-row">
+                            <label for="gender-{i}">Gender:</label>
+                            <select name="gender" id="gender-{i}" class="reco-select">
+                                <option value="">Any</option>
+                                <option value="male">Men</option>
+                                <option value="female">Women</option>
+                            </select>
+                        </div>
+                        
+                        <div class="reco-form-row">
+                            <label for="style-{i}">Style:</label>
+                            <select name="style" id="style-{i}" class="reco-select">
+                                <option value="">Any</option>
+                                <option value="casual">Casual</option>
+                                <option value="formal">Formal</option>
+                                <option value="business">Business</option>
+                                <option value="sporty">Sporty</option>
+                            </select>
+                        </div>
+                        
+                        <button type="submit" id="submit-btn-{i}" class="reco-submit">Find Similar Items</button>
+                    </form>
+                </div>
+            </div>
+            '''
+        
+        detections_html += '</div>'
     
     html = f'''
     <!DOCTYPE html>
@@ -1201,6 +1346,125 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                 background-color: #f1f1f1;
                 border-radius: 5px;
             }}
+            
+            /* Recommendation styles */
+            .recommendation-options {{
+                margin-top: 15px;
+                display: flex;
+                gap: 10px;
+            }}
+            .reco-button {{
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 0.9em;
+            }}
+            .reco-button.matching {{
+                background-color: #e74c3c;
+            }}
+            .reco-button.active, .reco-tab.active {{
+                box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.5);
+                font-weight: bold;
+            }}
+            .reco-button:hover {{
+                opacity: 0.9;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }}
+            .reco-tabs {{
+                display: flex;
+                margin-bottom: 15px;
+                border-bottom: 1px solid #ddd;
+            }}
+            .reco-tab {{
+                flex: 1;
+                background-color: #f8f8f8;
+                border: none;
+                padding: 10px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border-radius: 5px 5px 0 0;
+            }}
+            .reco-tab:first-child {{
+                background-color: #3498db;
+                color: white;
+            }}
+            .reco-tab:last-child {{
+                background-color: #e74c3c;
+                color: white;
+            }}
+            .reco-tab.active {{
+                border-bottom: 3px solid #2980b9;
+                font-weight: bold;
+            }}
+            .reco-tab:hover {{
+                background-color: #e9e9e9;
+            }}
+            .reco-tab:first-child:hover {{
+                background-color: #2980b9;
+            }}
+            .reco-tab:last-child:hover {{
+                background-color: #c0392b;
+            }}
+            .reco-modal {{
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.5);
+                z-index: 1000;
+                overflow: auto;
+            }}
+            .reco-modal-content {{
+                background-color: white;
+                margin: 10% auto;
+                padding: 20px;
+                border-radius: 8px;
+                width: 80%;
+                max-width: 500px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                position: relative;
+            }}
+            .reco-close {{
+                position: absolute;
+                top: 10px;
+                right: 15px;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+            }}
+            .reco-form-row {{
+                margin-bottom: 15px;
+            }}
+            .reco-form-row label {{
+                display: block;
+                margin-bottom: 5px;
+                font-weight: 500;
+            }}
+            .reco-select {{
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }}
+            .reco-submit {{
+                background-color: #2ecc71;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: 500;
+                width: 100%;
+                margin-top: 10px;
+            }}
+            .reco-submit:hover {{
+                background-color: #27ae60;
+            }}
         </style>
         <script>
             function toggleFeatures(id) {{
@@ -1209,6 +1473,96 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                     el.style.maxHeight = 'none';
                 }} else {{
                     el.style.maxHeight = '100px';
+                }}
+            }}
+            
+            function showRecoOptions(id, className, itemType, isMatching = false) {{
+                // Show the modal
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'block';
+                
+                // Update the title
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+                
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    // Make sure item_type is set correctly for similarity
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType;
+                }}
+                
+                // Add visual indicators for mode
+                const similarBtn = document.getElementById(`similar-btn-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-btn-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update form attributes based on operation
+                const form = document.getElementById(`reco-form-${{id}}`);
+                form.reset(); // Reset any previous selections
+            }}
+            
+            function closeRecoModal(id) {{
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'none';
+            }}
+            
+            function switchOperation(id, isMatching) {{
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // Get the item type
+                const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                const currentType = itemTypeField.getAttribute('data-original-type');
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    itemTypeField.value = currentType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    itemTypeField.value = currentType;
+                }}
+                
+                // Update visual indicators
+                const similarBtn = document.getElementById(`similar-btn-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-btn-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update the title
+                const className = document.getElementById(`item-class-${{id}}`).value;
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+            }}
+            
+            // Close modal when clicking outside content
+            window.onclick = function(event) {{
+                if (event.target.className === 'reco-modal') {{
+                    event.target.style.display = 'none';
                 }}
             }}
         </script>
@@ -1455,7 +1809,7 @@ async def api_tryon(
             "category": category,
             "processing_time": processing_time,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "details": tryon_result["details"]
+            "details": tryon_result["details"] if "details" in tryon_result else {}
         }
     
     except Exception as e:
@@ -1589,24 +1943,24 @@ def generate_tryon_result_html(request_id, model_img, garment_img, result_img, c
 
 async def process_multi_garment_tryon(
     client: httpx.AsyncClient,
-    model_image_data: str, 
-    top_image_data: Optional[str] = None,
-    bottom_image_data: Optional[str] = None,
+    model_image_b64: str,
+    top_image_b64: Optional[str],
+    bottom_image_b64: Optional[str],
     mode: str = "quality"
 ) -> Dict:
-    """Process multi-garment try-on request through the Virtual Try-On IEP"""
+    """Process multi-garment virtual try-on request through the Virtual Try-On IEP"""
     try:
         payload = {
-            "model_image_data": model_image_data,
-            "top_image_data": top_image_data,
-            "bottom_image_data": bottom_image_data,
+            "model_image_data": model_image_b64,
+            "top_image_data": top_image_b64,
+            "bottom_image_data": bottom_image_b64,
             "mode": mode
         }
         
         response = await client.post(
-            f"{VIRTUAL_TRYON_SERVICE_URL}/tryon/multi",
+            f"{VIRTUAL_TRYON_SERVICE_URL}/multi-tryon",
             json=payload,
-            timeout=float(SERVICE_TIMEOUT * 2)  # Double timeout for multi-garment
+            timeout=float(SERVICE_TIMEOUT)
         )
         
         response.raise_for_status()
@@ -1947,6 +2301,134 @@ async def api_elegance_chat(request: Request):
         return JSONResponse(
             status_code=500,
             content={"error": str(e), "response": "Je suis désolé! There was an error communicating with Elegance. Please try again."}
+        )
+
+@app.post("/recommendation")
+async def get_recommendation(
+    request: Request,
+    request_id: str = Form(...),
+    detection_id: str = Form(...),
+    operation: str = Form(...),  # "matching" or "similarity"
+    item_type: str = Form(...),  # "topwear" or "bottomwear"
+    gender: Optional[str] = Form(None),
+    style: Optional[str] = Form(None)
+):
+    """Endpoint to get recommendations for a detected item"""
+    try:
+        # Get analysis results from global store
+        analysis_results = analysis_results_store.get(request_id)
+        
+        if not analysis_results:
+            logger.error(f"Analysis results not found for request_id: {request_id}")
+            raise HTTPException(status_code=404, detail="Analysis results not found")
+        
+        # Get the specific detection
+        detection_index = int(detection_id)
+        if detection_index >= len(analysis_results.get("detections", [])):
+            logger.error(f"Detection index {detection_index} out of range")
+            raise HTTPException(status_code=404, detail="Detection not found")
+            
+        detection = analysis_results["detections"][detection_index]
+        
+        # Get the appropriate vector based on operation
+        vector = None
+        if operation == "matching":
+            vector = detection.get("color_histogram")
+        else:  # similarity
+            vector = detection.get("features")
+            
+        if not vector:
+            logger.error(f"No {'color' if operation == 'matching' else 'feature'} vector available")
+            raise HTTPException(status_code=400, 
+                              detail=f"No {'color' if operation == 'matching' else 'feature'} vector available")
+        
+        # Create client for recommendation request
+        async with httpx.AsyncClient() as client:
+            # Process the recommendation
+            result_image = await process_recommendation(
+                client=client,
+                vector=vector,
+                gender=gender,
+                style=style,
+                item_type=item_type,
+                operation=operation
+            )
+            
+            # Return the image directly
+            return StreamingResponse(io.BytesIO(result_image), media_type="image/jpeg")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in recommendation: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing recommendation: {str(e)}")
+
+@app.post("/api/recommendation")
+async def api_get_recommendation(request: Request, recommendation: RecommendationRequest):
+    """API endpoint to get recommendations for a detected item using JSON request body"""
+    try:
+        # Get analysis results from global store
+        analysis_results = analysis_results_store.get(recommendation.request_id)
+        
+        if not analysis_results:
+            logger.error(f"Analysis results not found for request_id: {recommendation.request_id}")
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Analysis results not found", "detail": f"No results found for request ID {recommendation.request_id}"}
+            )
+        
+        # Get the specific detection
+        detection_index = int(recommendation.detection_id)
+        if detection_index >= len(analysis_results.get("detections", [])):
+            logger.error(f"Detection index {detection_index} out of range")
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Detection not found", "detail": f"Detection index {detection_index} is out of range"}
+            )
+            
+        detection = analysis_results["detections"][detection_index]
+        
+        # Get the appropriate vector based on operation
+        vector = None
+        if recommendation.operation == "matching":
+            vector = detection.get("color_histogram")
+        else:  # similarity
+            vector = detection.get("features")
+            
+        if not vector:
+            logger.error(f"No {'color' if recommendation.operation == 'matching' else 'feature'} vector available")
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Vector not available", 
+                       "detail": f"No {'color' if recommendation.operation == 'matching' else 'feature'} vector available for this item"}
+            )
+        
+        # Create client for recommendation request
+        async with httpx.AsyncClient() as client:
+            # Process the recommendation
+            result_image = await process_recommendation(
+                client=client,
+                vector=vector,
+                gender=recommendation.gender,
+                style=recommendation.style,
+                item_type=recommendation.item_type,
+                operation=recommendation.operation
+            )
+            
+            # Return the image directly as a base64 string
+            base64_image = base64.b64encode(result_image).decode('utf-8')
+            return JSONResponse(
+                content={
+                    "image_data": base64_image,
+                    "content_type": "image/jpeg"
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in API recommendation: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Recommendation error", "detail": str(e)}
         )
 
 if __name__ == "__main__":
