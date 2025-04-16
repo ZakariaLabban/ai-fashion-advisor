@@ -16,6 +16,7 @@ import cv2
 from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -400,12 +401,24 @@ def generate_suggestions(analysis_results):
     style_score = analysis_results["style_consistency"]["score"]
     occasion_score = analysis_results["occasion_appropriateness"]["score"]
     
+    # New metrics if available
+    feature_score = analysis_results.get("feature_match", {}).get("score", 0)
+    histogram_score = analysis_results.get("color_histogram_match", {}).get("score", 0)
+    
     # Suggestions based on specific scores
     if color_score < 70:
         suggestions.append("Consider items with more complementary or harmonious colors.")
     
     if style_score < 70:
         suggestions.append("Try pieces that are more consistent in style or formality level.")
+    
+    # Add suggestions based on feature match
+    if feature_score > 0 and feature_score < 65:
+        suggestions.append("These items have different visual characteristics - consider pieces with more similar textures or patterns.")
+    
+    # Add suggestions based on color histogram
+    if histogram_score > 0 and histogram_score < 65:
+        suggestions.append("The color distributions of these items don't complement each other well - try a different color palette.")
     
     # Generic suggestions that enhance most outfits
     styling_suggestions = [
@@ -420,7 +433,7 @@ def generate_suggestions(analysis_results):
     random.shuffle(styling_suggestions)
     suggestions.extend(styling_suggestions[:2])
     
-    return suggestions[:3]  # Limit to 3 suggestions
+    return suggestions[:4]  # Increased limit to 4 to accommodate new metrics
 
 async def validate_clothing_types(top_image, bottom_image):
     """
@@ -491,6 +504,198 @@ async def validate_clothing_types(top_image, bottom_image):
         logger.error(f"Error during clothing type validation: {str(e)}")
         return False, f"Validation error: {str(e)}", None, None
 
+async def extract_features(client: httpx.AsyncClient, image_data: bytes, item_name: str):
+    """Extract features from an image using feature-iep
+    
+    Args:
+        client: httpx client
+        image_data: image bytes
+        item_name: name of item (for logging)
+        
+    Returns:
+        dict: feature extraction results including feature vector and color histogram
+    """
+    try:
+        logger.info(f"Sending {item_name} to Feature IEP for feature extraction")
+        files = {"file": (f"{item_name}.jpg", image_data, "image/jpeg")}
+        
+        response = await client.post(
+            f"{FEATURE_SERVICE_URL}/extract",
+            files=files,
+            timeout=SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Feature IEP error for {item_name}: {response.text}")
+            raise HTTPException(status_code=500, detail=f"Feature service error for {item_name}")
+        
+        result = response.json()
+        logger.info(f"Feature IEP response received for {item_name}")
+        return result
+    except Exception as e:
+        logger.error(f"Error extracting features for {item_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Feature extraction error: {str(e)}")
+
+def calculate_cosine_similarity(vector1, vector2):
+    """Calculate cosine similarity between two vectors
+    
+    Args:
+        vector1: First vector
+        vector2: Second vector
+        
+    Returns:
+        float: cosine similarity value between 0 and 1 (higher is more similar)
+    """
+    if not vector1 or not vector2:
+        return 0.0
+        
+    # Convert to numpy arrays if they aren't already
+    v1 = np.array(vector1)
+    v2 = np.array(vector2)
+    
+    # Handle zero vectors
+    if np.all(v1 == 0) or np.all(v2 == 0):
+        return 0.0
+    
+    # Calculate cosine similarity: dot(v1, v2) / (norm(v1) * norm(v2))
+    dot_product = np.dot(v1, v2)
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+    
+    similarity = dot_product / (norm_v1 * norm_v2)
+    
+    # Ensure value is between 0 and 1
+    return max(0.0, min(1.0, similarity))
+
+def calculate_euclidean_distance(vector1, vector2, normalize=True):
+    """Calculate Euclidean distance between two vectors
+    
+    Args:
+        vector1: First vector
+        vector2: Second vector
+        normalize: Whether to normalize the result to 0-1 range (1 = identical)
+        
+    Returns:
+        float: normalized distance value between 0 and 1 (higher is more similar)
+    """
+    if not vector1 or not vector2:
+        return 0.0
+        
+    # Convert to numpy arrays if they aren't already
+    v1 = np.array(vector1)
+    v2 = np.array(vector2)
+    
+    # Calculate Euclidean distance
+    distance = np.linalg.norm(v1 - v2)
+    
+    if normalize:
+        # For normalization, we need a sensible maximum distance
+        # This is a heuristic that can be adjusted based on feature vector properties
+        max_distance = np.sqrt(len(v1)) * 2  # Assuming values roughly in range [-1, 1]
+        
+        # Convert distance to similarity (0 to 1, where 1 means identical)
+        similarity = max(0.0, 1.0 - (distance / max_distance))
+        return similarity
+    
+    return distance
+
+def calculate_feature_match_score(top_features, bottom_features):
+    """Calculate match score based on feature vectors
+    
+    This uses cosine similarity as it's better for high-dimensional feature vectors
+    
+    Args:
+        top_features: Feature vector of top item
+        bottom_features: Feature vector of bottom item
+        
+    Returns:
+        tuple: (score, analysis_text)
+    """
+    similarity = calculate_cosine_similarity(top_features, bottom_features)
+    
+    # Convert to 0-100 score
+    score = round(similarity * 100)
+    
+    # Generate analysis text
+    if score >= 85:
+        analysis = "Excellent feature compatibility indicating harmonious outfit composition."
+    elif score >= 70:
+        analysis = "Good feature similarity suggesting compatible style elements."
+    elif score >= 50:
+        analysis = "Moderate feature compatibility that can work with proper styling."
+    else:
+        analysis = "Low feature similarity indicating contrasting style elements."
+    
+    return score, analysis
+
+def calculate_color_histogram_match(top_histogram, bottom_histogram):
+    """Calculate match score based on color histograms
+    
+    For color histograms, both metrics are informative:
+    - Cosine similarity captures overall color distribution similarity
+    - Euclidean measures absolute color difference
+    
+    Args:
+        top_histogram: Color histogram of top item
+        bottom_histogram: Color histogram of bottom item
+        
+    Returns:
+        tuple: (score, analysis_text)
+    """
+    # Use a weighted combination of both metrics
+    cosine_sim = calculate_cosine_similarity(top_histogram, bottom_histogram)
+    euclidean_sim = calculate_euclidean_distance(top_histogram, bottom_histogram, normalize=True)
+    
+    # Weighted score: cosine is better for color distribution patterns,
+    # while euclidean captures magnitude differences
+    weighted_score = (0.7 * cosine_sim + 0.3 * euclidean_sim) * 100
+    score = round(weighted_score)
+    
+    # Generate analysis text
+    if score >= 85:
+        analysis = "Highly complementary color distributions."
+    elif score >= 70:
+        analysis = "Compatible color palettes that work well together."
+    elif score >= 50:
+        analysis = "Adequate color coordination with some differences."
+    else:
+        analysis = "Contrasting color palettes that may create a bold look."
+    
+    return score, analysis
+
+async def detect_clothing_items(client: httpx.AsyncClient, image_data: bytes, item_name: str):
+    """Detect clothing items in an image using detection-iep
+    
+    Args:
+        client: httpx client
+        image_data: image bytes
+        item_name: name of item (for logging)
+        
+    Returns:
+        dict: detection results
+    """
+    try:
+        logger.info(f"Sending {item_name} to Detection IEP")
+        files = {"file": (f"{item_name}.jpg", image_data, "image/jpeg")}
+        
+        # Send image to detection-iep
+        response = await client.post(
+            "http://detection-iep:8001/detect",  # Hardcoded URL since it's not in env vars
+            files=files,
+            timeout=SERVICE_TIMEOUT
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Detection IEP error for {item_name}: {response.text}")
+            raise HTTPException(status_code=500, detail=f"Detection service error for {item_name}")
+        
+        result = response.json()
+        logger.info(f"Detection IEP found {len(result.get('detections', []))} items for {item_name}")
+        return result
+    except Exception as e:
+        logger.error(f"Error detecting items for {item_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection error: {str(e)}")
+
 # API Endpoints
 @app.get("/")
 async def root():
@@ -519,20 +724,52 @@ async def match_outfit(
         top_content = await topwear.read()
         bottom_content = await bottomwear.read()
         
-        # Convert to PIL images
+        # Convert to PIL images for color extraction
         top_image = Image.open(io.BytesIO(top_content)).convert('RGB')
         bottom_image = Image.open(io.BytesIO(bottom_content)).convert('RGB')
         
-        # Validate clothing types and get style classifications
-        valid, error_message, top_style_result, bottom_style_result = await validate_clothing_types(top_image, bottom_image)
-        if not valid:
-            raise HTTPException(status_code=400, detail=error_message)
-        
-        # Extract dominant colors
+        # Extract dominant colors from the full images
         top_colors = extract_dominant_colors(top_image)
         bottom_colors = extract_dominant_colors(bottom_image)
         
-        # Extract primary style from results (highest confidence)
+        # Initialize variables for the API responses
+        top_style_result = None
+        bottom_style_result = None
+        top_feature_result = None
+        bottom_feature_result = None
+        top_detection_result = None
+        bottom_detection_result = None
+        
+        # Create an HTTP client for API calls
+        async with httpx.AsyncClient() as client:
+            # STEP 1: Style Classification
+            # First validate clothing types and get style classifications
+            valid, error_message, top_style_result, bottom_style_result = await validate_clothing_types(top_image, bottom_image)
+            if not valid:
+                raise HTTPException(status_code=400, detail=error_message)
+                
+            # STEP 2: Detection API calls
+            # This is optional but can be used to get better crops of the main garments
+            detection_tasks = [
+                detect_clothing_items(client, top_content, "topwear"),
+                detect_clothing_items(client, bottom_content, "bottomwear")
+            ]
+            try:
+                top_detection_result, bottom_detection_result = await asyncio.gather(*detection_tasks)
+            except Exception as e:
+                logger.warning(f"Detection API failed, proceeding without detection: {str(e)}")
+                # Continue without detection results
+            
+            # STEP 3: Feature extraction API calls
+            # For simplicity, we'll use the full images for feature extraction
+            # In a more advanced implementation, we'd use the detection bounding boxes
+            feature_tasks = [
+                extract_features(client, top_content, "topwear"),
+                extract_features(client, bottom_content, "bottomwear")
+            ]
+            top_feature_result, bottom_feature_result = await asyncio.gather(*feature_tasks)
+        
+        # STEP 4: Extract primary style from results (highest confidence)
         top_style = "casual"  # Default fallback
         bottom_style = "casual"  # Default fallback
         
@@ -548,27 +785,95 @@ async def match_outfit(
         
         logger.info(f"Using top style: {top_style}, bottom style: {bottom_style}")
         
-        # Get color families
+        # STEP 5: Get color families from dominant colors
         top_color_family = get_color_family(top_colors[0])
         bottom_color_family = get_color_family(bottom_colors[0])
         
-        # Calculate match metrics
+        # STEP 6: Calculate match metrics
+        
+        # 6.1: Color harmony from dominant colors
         color_score, color_analysis = calculate_color_harmony(top_colors, bottom_colors)
+        
+        # 6.2: Feature vector match
+        feature_score = 0
+        feature_analysis = "Feature analysis not available."
+        if top_feature_result and bottom_feature_result:
+            if "features" in top_feature_result and "features" in bottom_feature_result:
+                feature_score, feature_analysis = calculate_feature_match_score(
+                    top_feature_result["features"], 
+                    bottom_feature_result["features"]
+                )
+        
+        # 6.3: Color histogram match
+        histogram_score = 0
+        histogram_analysis = "Color histogram analysis not available."
+        if top_feature_result and bottom_feature_result:
+            if "color_histogram" in top_feature_result and "color_histogram" in bottom_feature_result:
+                histogram_score, histogram_analysis = calculate_color_histogram_match(
+                    top_feature_result["color_histogram"],
+                    bottom_feature_result["color_histogram"]
+                )
+        
+        # 6.4: Style consistency based on style classifications
         style_score, style_analysis = evaluate_style_consistency(top_style, bottom_style)
+        
+        # 6.5: Occasion appropriateness based on style and color
         occasion_score, occasion_analysis = analyze_occasion_appropriateness(
             top_style, bottom_style, top_color_family, bottom_color_family
         )
+        
+        # 6.6: Trend alignment based on style combinations
         trend_score, trend_analysis = calculate_trend_alignment(top_style, bottom_style)
         
-        # Calculate weighted overall match score
+        # STEP 7: Calculate weighted overall match score
+        # Assign weights to different factors
+        # We now have more factors to consider:
+        # - Color harmony (visual perception of dominant colors)
+        # - Feature vector similarity (learned embeddings from training)
+        # - Color histogram match (detailed color distribution comparison)
+        # - Style consistency (explicit style classification match)
+        # - Occasion appropriateness (suitability for different contexts)
+        # - Trend alignment (current fashion relevance)
+        
+        weights = {
+            "color_harmony": 0.20,      # Reduced from 0.4 to accommodate new factors
+            "feature_match": 0.20,      # High weight as it captures learned patterns
+            "color_histogram": 0.15,    # Moderate weight for detailed color analysis
+            "style_consistency": 0.20,  # Reduced from 0.3 but still important
+            "occasion": 0.15,           # Slightly reduced
+            "trend": 0.10               # Kept the same
+        }
+        
+        # If feature or histogram scores are not available, redistribute their weights
+        if feature_score == 0:
+            redistribution = weights["feature_match"] / 5
+            weights["feature_match"] = 0
+            weights["color_harmony"] += redistribution
+            weights["color_histogram"] += redistribution
+            weights["style_consistency"] += redistribution
+            weights["occasion"] += redistribution
+            weights["trend"] += redistribution
+            
+        if histogram_score == 0:
+            redistribution = weights["color_histogram"] / 5
+            weights["color_histogram"] = 0
+            weights["color_harmony"] += redistribution
+            weights["feature_match"] += redistribution
+            weights["style_consistency"] += redistribution
+            weights["occasion"] += redistribution
+            weights["trend"] += redistribution
+        
+        # Calculate weighted score
         overall_score = round(
-            0.4 * color_score +
-            0.3 * style_score +
-            0.2 * occasion_score +
-            0.1 * trend_score
+            weights["color_harmony"] * color_score +
+            weights["feature_match"] * feature_score +
+            weights["color_histogram"] * histogram_score +
+            weights["style_consistency"] * style_score +
+            weights["occasion"] * occasion_score +
+            weights["trend"] * trend_score
         )
         
-        # Compile analysis results
+        # STEP 8: Compile analysis results
         analysis = {
             "color_harmony": {
                 "score": color_score,
@@ -587,6 +892,19 @@ async def match_outfit(
                 "analysis": trend_analysis
             }
         }
+        
+        # Add feature and histogram analysis if available
+        if feature_score > 0:
+            analysis["feature_match"] = {
+                "score": feature_score,
+                "analysis": feature_analysis
+            }
+            
+        if histogram_score > 0:
+            analysis["color_histogram_match"] = {
+                "score": histogram_score,
+                "analysis": histogram_analysis
+            }
         
         # Generate suggestions
         suggestions = generate_suggestions(analysis)

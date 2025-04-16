@@ -2459,6 +2459,8 @@ class MatchAnalysis(BaseModel):
     style_consistency: MatchAnalysisItem
     occasion_appropriateness: MatchAnalysisItem
     trend_alignment: MatchAnalysisItem
+    feature_match: Optional[MatchAnalysisItem] = None
+    color_histogram_match: Optional[MatchAnalysisItem] = None
 
 class MatchResponse(BaseModel):
     match_score: int
