@@ -423,19 +423,73 @@ def generate_suggestions(analysis_results):
     return suggestions[:3]  # Limit to 3 suggestions
 
 async def validate_clothing_types(top_image, bottom_image):
-    """Validate that images are indeed top and bottom wear"""
-    # This would normally use the style_iep to validate clothing types
-    # For this prototype, we'll return a simplified validation
-    # In production, this should make actual API calls to style_iep
+    """
+    Validate that images are indeed top and bottom wear and return style classifications
     
-    # Simulate validation with random success rate for demo
-    # In production, replace with actual service calls
-    validation_success = True  # Assume valid for now
-    
-    if validation_success:
-        return True, None
-    else:
-        return False, "Unable to confirm clothing types. Please ensure one image is topwear and one is bottomwear."
+    Returns:
+        tuple: (valid, error_message, top_style_result, bottom_style_result)
+            - valid: Boolean indicating if validation passed
+            - error_message: Error message if validation failed, None otherwise
+            - top_style_result: Style classification result for top image
+            - bottom_style_result: Style classification result for bottom image
+    """
+    try:
+        # Convert images to bytes for API calls
+        top_image_bytes = io.BytesIO()
+        bottom_image_bytes = io.BytesIO()
+        top_image.save(top_image_bytes, format="JPEG")
+        bottom_image.save(bottom_image_bytes, format="JPEG")
+        top_image_bytes.seek(0)
+        bottom_image_bytes.seek(0)
+        
+        # Call style-iep to classify both images
+        async with httpx.AsyncClient() as client:
+            # Classify top image
+            top_files = {"file": ("top.jpg", top_image_bytes.getvalue(), "image/jpeg")}
+            top_response = await client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files=top_files,
+                timeout=SERVICE_TIMEOUT
+            )
+            
+            if top_response.status_code != 200:
+                logger.error(f"Style IEP validation error for topwear: {top_response.text}")
+                return False, "Error validating topwear image", None, None
+            
+            # Classify bottom image
+            bottom_files = {"file": ("bottom.jpg", bottom_image_bytes.getvalue(), "image/jpeg")}
+            bottom_response = await client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files=bottom_files,
+                timeout=SERVICE_TIMEOUT
+            )
+            
+            if bottom_response.status_code != 200:
+                logger.error(f"Style IEP validation error for bottomwear: {bottom_response.text}")
+                return False, "Error validating bottomwear image", None, None
+            
+            # Get results
+            top_result = top_response.json()
+            bottom_result = bottom_response.json()
+            
+            # Check if any styles were detected
+            if not top_result.get("styles"):
+                logger.warning("No style detected in topwear image")
+                return False, "Could not detect styles in topwear image. Please ensure it contains visible clothing.", None, None
+                
+            if not bottom_result.get("styles"):
+                logger.warning("No style detected in bottomwear image")
+                return False, "Could not detect styles in bottomwear image. Please ensure it contains visible clothing.", None, None
+                
+            # For now, we're just checking if styles are detected
+            # In a more advanced implementation, we could check if the detected garment types 
+            # match what we expect (top vs. bottom)
+            
+            return True, None, top_result, bottom_result
+            
+    except Exception as e:
+        logger.error(f"Error during clothing type validation: {str(e)}")
+        return False, f"Validation error: {str(e)}", None, None
 
 # API Endpoints
 @app.get("/")
@@ -469,8 +523,8 @@ async def match_outfit(
         top_image = Image.open(io.BytesIO(top_content)).convert('RGB')
         bottom_image = Image.open(io.BytesIO(bottom_content)).convert('RGB')
         
-        # Validate clothing types (would call style_iep in production)
-        valid, error_message = await validate_clothing_types(top_image, bottom_image)
+        # Validate clothing types and get style classifications
+        valid, error_message, top_style_result, bottom_style_result = await validate_clothing_types(top_image, bottom_image)
         if not valid:
             raise HTTPException(status_code=400, detail=error_message)
         
@@ -478,10 +532,21 @@ async def match_outfit(
         top_colors = extract_dominant_colors(top_image)
         bottom_colors = extract_dominant_colors(bottom_image)
         
-        # For demo purposes, assign styles
-        # In production, these would come from style_iep
-        top_style = "casual"  # Placeholder
-        bottom_style = "casual"  # Placeholder
+        # Extract primary style from results (highest confidence)
+        top_style = "casual"  # Default fallback
+        bottom_style = "casual"  # Default fallback
+        
+        if top_style_result and "styles" in top_style_result and top_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(top_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            top_style = sorted_styles[0]["style_name"].lower()
+        
+        if bottom_style_result and "styles" in bottom_style_result and bottom_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(bottom_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            bottom_style = sorted_styles[0]["style_name"].lower()
+        
+        logger.info(f"Using top style: {top_style}, bottom style: {bottom_style}")
         
         # Get color families
         top_color_family = get_color_family(top_colors[0])

@@ -14,9 +14,9 @@ It provides a comprehensive match score along with detailed analysis and styling
 
 ## Features
 
-- **Topwear/Bottomwear Validation**: Ensures the provided items are correctly identified
+- **Topwear/Bottomwear Validation**: Ensures the provided items are correctly identified using the Style IEP
 - **Color Analysis**: Evaluates color compatibility using color theory principles
-- **Style Compatibility**: Assesses style consistency between different clothing types
+- **Style Compatibility**: Assesses style consistency between different clothing types using real style classifications from the Style IEP
 - **Occasion Matching**: Determines appropriate settings for the outfit
 - **Fashion Trend Alignment**: Evaluates how trendy the combination is
 - **Styling Suggestions**: Provides actionable recommendations for improvement
@@ -70,6 +70,15 @@ Form data:
   ]
 }
 ```
+
+## Integration with Style IEP
+
+This service now integrates with the Style IEP to get actual style classifications rather than using hardcoded placeholder values:
+
+1. When images are uploaded, they are first validated through the Style IEP
+2. The Style IEP performs style classification on both topwear and bottomwear images
+3. The highest confidence style for each item is used for the matching analysis
+4. The style information feeds into style consistency, occasion appropriateness, and trend alignment analysis
 
 ## Configuration
 
