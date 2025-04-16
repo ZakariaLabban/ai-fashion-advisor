@@ -17,15 +17,28 @@ It provides a comprehensive match score along with detailed analysis and styling
 ## Features
 
 - **Topwear/Bottomwear Validation**: Ensures the provided items are correctly identified using the Style IEP
+- **Specific Garment Detection**: Uses Detection IEP to isolate specific clothing items (Shirt for topwear, Pants/Shorts for bottomwear)
 - **Color Analysis**: Evaluates color compatibility using color theory principles
 - **Feature Vector Matching**: Uses cosine similarity to compare deep learning feature embeddings from Feature IEP
-- **Color Histogram Matching**: Uses a combination of cosine similarity and Euclidean distance to compare detailed color distributions
+- **Advanced Color Histogram Matching**: Evaluates color distribution compatibility using both similarity and contrast metrics
 - **Style Compatibility**: Assesses style consistency between different clothing types using real style classifications from the Style IEP
 - **Occasion Matching**: Determines appropriate settings for the outfit
 - **Fashion Trend Alignment**: Evaluates how trendy the combination is
 - **Styling Suggestions**: Provides actionable recommendations for improvement
 
 ## Matching Algorithm
+
+### Detection and Processing Pipeline
+
+1. **Clothing Detection**:
+   - Uses Detection IEP to identify specific garments in the uploaded images
+   - Locates "Shirt" in topwear image and "Pants/Shorts" in bottomwear image
+   - Extracts cropped regions of the detected clothing items for more accurate analysis
+
+2. **Feature Extraction**:
+   - Sends detected garment crops to Feature IEP 
+   - Extracts feature vectors and color histograms from the specific garments
+   - Falls back to full image if specific garments aren't detected
 
 ### Scoring Components
 
@@ -45,9 +58,12 @@ If any component is unavailable (e.g., feature extraction fails), its weight is 
 ### Vector Similarity Metrics
 
 - **Cosine Similarity**: Used for feature vectors as it focuses on the direction/pattern rather than magnitude, which is ideal for high-dimensional embeddings that capture semantic relationships
-- **Combined Metric for Color Histograms**: Uses a weighted combination (70% cosine, 30% Euclidean) to balance:
-  - Pattern similarity (cosine) - capturing whether colors appear in similar proportions
-  - Magnitude differences (Euclidean) - capturing the absolute difference in color distributions
+
+- **Enhanced Color Histogram Matching**: 
+  - Uses a U-shaped scoring function that rewards both similar colors (monochromatic schemes) and complementary colors (high contrast)
+  - Calculates color entropy to measure color diversity and contrast
+  - Combines similarity measures with entropy difference for a comprehensive color compatibility score
+  - Recognizes that both very similar and very different color distributions can work well in fashion
 
 ## API Endpoints
 
@@ -85,7 +101,7 @@ Form data:
     },
     "color_histogram_match": {
       "score": 82,
-      "analysis": "Compatible color palettes that work well together."
+      "analysis": "Bold contrasting color combination creating visual interest."
     },
     "style_consistency": {
       "score": 80,
@@ -112,7 +128,7 @@ Form data:
 This service integrates with multiple IEPs:
 
 1. **Style IEP**: Gets actual style classifications for both items
-2. **Detection IEP**: Identifies clothing items in images (optional enhancement)
+2. **Detection IEP**: Identifies specific clothing items in images for targeted analysis
 3. **Feature IEP**: Extracts feature vectors and color histograms for advanced matching
 
 ## Configuration

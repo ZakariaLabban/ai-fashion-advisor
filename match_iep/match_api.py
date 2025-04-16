@@ -631,9 +631,10 @@ def calculate_feature_match_score(top_features, bottom_features):
 def calculate_color_histogram_match(top_histogram, bottom_histogram):
     """Calculate match score based on color histograms
     
-    For color histograms, both metrics are informative:
-    - Cosine similarity captures overall color distribution similarity
-    - Euclidean measures absolute color difference
+    For color histograms, we need to consider:
+    - Complementary colors (opposite on color wheel) can work well together
+    - Very similar colors can work well (monochromatic)
+    - Colors with high contrast in value (lightness) often work well
     
     Args:
         top_histogram: Color histogram of top item
@@ -642,24 +643,48 @@ def calculate_color_histogram_match(top_histogram, bottom_histogram):
     Returns:
         tuple: (score, analysis_text)
     """
-    # Use a weighted combination of both metrics
+    # Use a weighted combination of metrics
     cosine_sim = calculate_cosine_similarity(top_histogram, bottom_histogram)
     euclidean_sim = calculate_euclidean_distance(top_histogram, bottom_histogram, normalize=True)
     
-    # Weighted score: cosine is better for color distribution patterns,
-    # while euclidean captures magnitude differences
-    weighted_score = (0.7 * cosine_sim + 0.3 * euclidean_sim) * 100
+    # Convert histograms to numpy arrays
+    top_hist = np.array(top_histogram)
+    bottom_hist = np.array(bottom_histogram)
+    
+    # Calculate histogram entropy (measure of color diversity)
+    top_entropy = -np.sum(top_hist * np.log2(top_hist + 1e-10))
+    bottom_entropy = -np.sum(bottom_hist * np.log2(bottom_hist + 1e-10))
+    
+    # Calculate color contrast
+    # For this simple implementation, we'll use the difference in entropy
+    # as a proxy for contrast (more diverse colors = more contrast)
+    entropy_diff = abs(top_entropy - bottom_entropy)
+    normalized_entropy_diff = min(1.0, entropy_diff / 5.0)  # Normalize to [0,1]
+    
+    # Very high or very low similarity can both be good for different reasons:
+    # - High similarity: monochromatic look (good)
+    # - Medium similarity: potentially clashing (bad)
+    # - Low similarity: potentially complementary (good)
+    
+    # Calculate a "similarity score" that rewards both high and low similarity
+    # (U-shaped function that gives high scores to both very similar and very different colors)
+    similarity_score = 1.0 - 4.0 * (cosine_sim - 0.5) * (cosine_sim - 0.5)
+    
+    # Combine metrics:
+    # - Similarity score (higher is better): rewards both match and opposition
+    # - Normalized entropy difference (higher is better): rewards contrast
+    weighted_score = (0.6 * similarity_score + 0.4 * normalized_entropy_diff) * 100
     score = round(weighted_score)
     
     # Generate analysis text
-    if score >= 85:
-        analysis = "Highly complementary color distributions."
-    elif score >= 70:
-        analysis = "Compatible color palettes that work well together."
-    elif score >= 50:
-        analysis = "Adequate color coordination with some differences."
+    if cosine_sim > 0.8:
+        analysis = "Harmonious monochromatic color scheme with subtle variations."
+    elif cosine_sim < 0.3:
+        analysis = "Bold contrasting color combination creating visual interest."
+    elif normalized_entropy_diff > 0.7:
+        analysis = "Good color contrast between items enhancing visual appeal."
     else:
-        analysis = "Contrasting color palettes that may create a bold look."
+        analysis = "Moderate color coordination that works with proper styling."
     
     return score, analysis
 
@@ -696,6 +721,65 @@ async def detect_clothing_items(client: httpx.AsyncClient, image_data: bytes, it
         logger.error(f"Error detecting items for {item_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Detection error: {str(e)}")
 
+def extract_crop_from_detection(image, detection):
+    """Extract cropped image from detection bbox
+    
+    Args:
+        image: PIL Image
+        detection: Detection with bbox
+        
+    Returns:
+        PIL Image: Cropped image
+    """
+    try:
+        # Extract bbox coordinates
+        bbox = detection.get('bbox', [0, 0, 0, 0])
+        if len(bbox) != 4:
+            logger.warning("Invalid bbox format")
+            return None
+            
+        # Make sure bbox is within image bounds
+        width, height = image.size
+        x1, y1, x2, y2 = bbox
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = min(width, x2)
+        y2 = min(height, y2)
+        
+        # Crop the image
+        cropped_img = image.crop((x1, y1, x2, y2))
+        return cropped_img
+    except Exception as e:
+        logger.error(f"Error cropping image: {str(e)}")
+        return None
+
+def find_garment_by_class(detections, target_class):
+    """Find the highest confidence detection of a specific class
+    
+    Args:
+        detections: List of detections
+        target_class: Class name to find
+    
+    Returns:
+        dict: Detection with highest confidence or None if not found
+    """
+    matching_detections = []
+    for detection in detections:
+        if detection.get('class_name', '').lower() == target_class.lower():
+            matching_detections.append(detection)
+    
+    if not matching_detections:
+        return None
+    
+    # Sort by confidence (highest first)
+    sorted_detections = sorted(
+        matching_detections, 
+        key=lambda x: float(x.get('confidence', 0)), 
+        reverse=True
+    )
+    
+    return sorted_detections[0]
+
 # API Endpoints
 @app.get("/")
 async def root():
@@ -728,10 +812,6 @@ async def match_outfit(
         top_image = Image.open(io.BytesIO(top_content)).convert('RGB')
         bottom_image = Image.open(io.BytesIO(bottom_content)).convert('RGB')
         
-        # Extract dominant colors from the full images
-        top_colors = extract_dominant_colors(top_image)
-        bottom_colors = extract_dominant_colors(bottom_image)
-        
         # Initialize variables for the API responses
         top_style_result = None
         bottom_style_result = None
@@ -739,6 +819,10 @@ async def match_outfit(
         bottom_feature_result = None
         top_detection_result = None
         bottom_detection_result = None
+        
+        # For the specific clothing items
+        top_shirt_crop = None
+        bottom_pants_crop = None
         
         # Create an HTTP client for API calls
         async with httpx.AsyncClient() as client:
@@ -748,28 +832,85 @@ async def match_outfit(
             if not valid:
                 raise HTTPException(status_code=400, detail=error_message)
                 
-            # STEP 2: Detection API calls
-            # This is optional but can be used to get better crops of the main garments
+            # STEP 2: Detection API calls to identify specific clothing items
             detection_tasks = [
                 detect_clothing_items(client, top_content, "topwear"),
                 detect_clothing_items(client, bottom_content, "bottomwear")
             ]
             try:
                 top_detection_result, bottom_detection_result = await asyncio.gather(*detection_tasks)
+                
+                # Extract the highest confidence Shirt from topwear
+                if top_detection_result and "detections" in top_detection_result:
+                    shirt_detection = find_garment_by_class(
+                        top_detection_result["detections"], 
+                        "Shirt"
+                    )
+                    if shirt_detection:
+                        logger.info(f"Found Shirt in topwear with confidence {shirt_detection.get('confidence', 0)}")
+                        top_shirt_crop = extract_crop_from_detection(top_image, shirt_detection)
+                    else:
+                        logger.warning("No Shirt found in topwear image")
+                
+                # Extract the highest confidence Pants/Shorts from bottomwear
+                if bottom_detection_result and "detections" in bottom_detection_result:
+                    pants_detection = find_garment_by_class(
+                        bottom_detection_result["detections"], 
+                        "Pants/Shorts"
+                    )
+                    if pants_detection:
+                        logger.info(f"Found Pants/Shorts in bottomwear with confidence {pants_detection.get('confidence', 0)}")
+                        bottom_pants_crop = extract_crop_from_detection(bottom_image, pants_detection)
+                    else:
+                        logger.warning("No Pants/Shorts found in bottomwear image")
+                
             except Exception as e:
-                logger.warning(f"Detection API failed, proceeding without detection: {str(e)}")
+                logger.warning(f"Detection API failed or no specific garments found, proceeding with full images: {str(e)}")
                 # Continue without detection results
             
             # STEP 3: Feature extraction API calls
-            # For simplicity, we'll use the full images for feature extraction
-            # In a more advanced implementation, we'd use the detection bounding boxes
+            # Use specific garment crops if available, otherwise use full images
+            top_bytes = io.BytesIO()
+            bottom_bytes = io.BytesIO()
+            
+            if top_shirt_crop:
+                top_shirt_crop.save(top_bytes, format="JPEG")
+                top_bytes.seek(0)
+                logger.info("Using cropped Shirt image for feature extraction")
+            else:
+                top_image.save(top_bytes, format="JPEG")
+                top_bytes.seek(0)
+                logger.info("Using full topwear image for feature extraction")
+                
+            if bottom_pants_crop:
+                bottom_pants_crop.save(bottom_bytes, format="JPEG")
+                bottom_bytes.seek(0)
+                logger.info("Using cropped Pants/Shorts image for feature extraction")
+            else:
+                bottom_image.save(bottom_bytes, format="JPEG")
+                bottom_bytes.seek(0)
+                logger.info("Using full bottomwear image for feature extraction")
+            
+            # Send to feature extraction API
             feature_tasks = [
-                extract_features(client, top_content, "topwear"),
-                extract_features(client, bottom_content, "bottomwear")
+                extract_features(client, top_bytes.getvalue(), "topwear"),
+                extract_features(client, bottom_bytes.getvalue(), "bottomwear")
             ]
             top_feature_result, bottom_feature_result = await asyncio.gather(*feature_tasks)
         
-        # STEP 4: Extract primary style from results (highest confidence)
+        # STEP 4: Extract dominant colors for color harmony analysis
+        # Use specific garment crops if available
+        if top_shirt_crop:
+            top_colors = extract_dominant_colors(top_shirt_crop)
+        else:
+            top_colors = extract_dominant_colors(top_image)
+            
+        if bottom_pants_crop:
+            bottom_colors = extract_dominant_colors(bottom_pants_crop)
+        else:
+            bottom_colors = extract_dominant_colors(bottom_image)
+        
+        # STEP 5: Extract primary style from results (highest confidence)
         top_style = "casual"  # Default fallback
         bottom_style = "casual"  # Default fallback
         
@@ -785,16 +926,16 @@ async def match_outfit(
         
         logger.info(f"Using top style: {top_style}, bottom style: {bottom_style}")
         
-        # STEP 5: Get color families from dominant colors
+        # STEP 6: Get color families from dominant colors
         top_color_family = get_color_family(top_colors[0])
         bottom_color_family = get_color_family(bottom_colors[0])
         
-        # STEP 6: Calculate match metrics
+        # STEP 7: Calculate match metrics
         
-        # 6.1: Color harmony from dominant colors
+        # 7.1: Color harmony from dominant colors
         color_score, color_analysis = calculate_color_harmony(top_colors, bottom_colors)
         
-        # 6.2: Feature vector match
+        # 7.2: Feature vector match
         feature_score = 0
         feature_analysis = "Feature analysis not available."
         if top_feature_result and bottom_feature_result:
@@ -804,7 +945,7 @@ async def match_outfit(
                     bottom_feature_result["features"]
                 )
         
-        # 6.3: Color histogram match
+        # 7.3: Color histogram match
         histogram_score = 0
         histogram_analysis = "Color histogram analysis not available."
         if top_feature_result and bottom_feature_result:
@@ -814,34 +955,26 @@ async def match_outfit(
                     bottom_feature_result["color_histogram"]
                 )
         
-        # 6.4: Style consistency based on style classifications
+        # 7.4: Style consistency based on style classifications
         style_score, style_analysis = evaluate_style_consistency(top_style, bottom_style)
         
-        # 6.5: Occasion appropriateness based on style and color
+        # 7.5: Occasion appropriateness based on style and color
         occasion_score, occasion_analysis = analyze_occasion_appropriateness(
             top_style, bottom_style, top_color_family, bottom_color_family
         )
         
-        # 6.6: Trend alignment based on style combinations
+        # 7.6: Trend alignment based on style combinations
         trend_score, trend_analysis = calculate_trend_alignment(top_style, bottom_style)
         
-        # STEP 7: Calculate weighted overall match score
-        # Assign weights to different factors
-        # We now have more factors to consider:
-        # - Color harmony (visual perception of dominant colors)
-        # - Feature vector similarity (learned embeddings from training)
-        # - Color histogram match (detailed color distribution comparison)
-        # - Style consistency (explicit style classification match)
-        # - Occasion appropriateness (suitability for different contexts)
-        # - Trend alignment (current fashion relevance)
-        
+        # STEP 8: Calculate weighted overall match score
+        # Weights are same as before
         weights = {
-            "color_harmony": 0.20,      # Reduced from 0.4 to accommodate new factors
-            "feature_match": 0.20,      # High weight as it captures learned patterns
-            "color_histogram": 0.15,    # Moderate weight for detailed color analysis
-            "style_consistency": 0.20,  # Reduced from 0.3 but still important
-            "occasion": 0.15,           # Slightly reduced
-            "trend": 0.10               # Kept the same
+            "color_harmony": 0.20,      # Dominant colors analysis
+            "feature_match": 0.20,      # Feature vectors from ML model
+            "color_histogram": 0.15,    # Detailed color distribution analysis
+            "style_consistency": 0.20,  # Style classification matching
+            "occasion": 0.15,           # Occasion appropriateness
+            "trend": 0.10               # Fashion trend relevance
         }
         
         # If feature or histogram scores are not available, redistribute their weights
@@ -873,7 +1006,7 @@ async def match_outfit(
             weights["trend"] * trend_score
         )
         
-        # STEP 8: Compile analysis results
+        # STEP 9: Compile analysis results
         analysis = {
             "color_harmony": {
                 "score": color_score,
@@ -909,16 +1042,12 @@ async def match_outfit(
         # Generate suggestions
         suggestions = generate_suggestions(analysis)
         
-        # For demo, no alternative pairings yet
-        # In production, these would come from reco_data_iep
-        alternative_pairings = []
-        
         # Prepare response
         response = {
             "match_score": overall_score,
             "analysis": analysis,
             "suggestions": suggestions,
-            "alternative_pairings": alternative_pairings
+            "alternative_pairings": []
         }
         
         return response
