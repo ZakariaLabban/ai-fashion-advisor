@@ -19,21 +19,59 @@ AI Fashion Advisor leverages advanced deep learning models to detect clothing it
 - **AI Fashion Assistant**: Get personalized style advice from an AI chatbot
 - **Recommendation System**: Find matching or similar clothing items based on color and style
 - **Modern React Frontend**: Sleek, responsive UI built with React and Tailwind CSS
+- **Outfit Matching**: Evaluate how well tops and bottoms match and get styling suggestions
 
 ## Architecture
 
 The system is built using a microservices architecture with the following components:
 
-1. **React Frontend**: Modern, responsive UI built with React and Tailwind CSS
+1. **React Frontend (AURAI)**: Modern, responsive UI built with React and Tailwind CSS
+   - Clean, modern design with Tailwind CSS
+   - Mobile-friendly interface
+   - Built with Vite for optimized development and production builds
+
 2. **External Endpoint Processor (EEP)**: Main entry point that coordinates all services
+   - Handles inter-service communication
+   - Routes requests to appropriate services
+   - Consolidates results from multiple services
+
 3. **Detection IEP**: Detects clothing items in images using YOLOv8
+   - Identifies and segments clothing items
+   - Provides bounding box coordinates
+
 4. **Feature IEP**: Extracts feature vectors from clothing items with ResNet50
+   - Generates feature embeddings for similarity searches
+   - Creates color histograms for color matching
+
 5. **Style IEP**: Classifies clothing styles using a fine-tuned YOLOv8 model
+   - Categorizes clothing by style (casual, formal, etc.)
+   - Identifies the type of clothing item
+
 6. **Virtual Try-On IEP**: Enables virtual clothing try-on via FASHN.AI API
+   - Supports trying on tops and bottoms
+   - Requires model image and garment image
+   - Provides clear guidelines for optimal results
+
 7. **Elegance IEP**: AI fashion advisor chatbot built with OpenAI
-8. **Recommendation Data IEP**: Provides clothing recommendations and similarity search using vector databases
+   - Offers fashion advice and styling tips
+   - Helps users navigate the system
 
+8. **Recommendation Data IEP**: Provides clothing recommendations and similarity search
+   - Uses Qdrant for vector similarity search
+   - Uses MySQL for metadata storage and filtering
+   - Uses Google Drive for image storage and retrieval
+   - Offers matching recommendations (e.g., bottom to match a top)
+   - Provides similarity search (e.g., similar shirts)
 
+9. **Match IEP**: Evaluates compatibility between top and bottom garments
+   - Analyzes clothing pairs across multiple dimensions:
+     - Color harmony (K-means clustering)
+     - Feature vector similarity
+     - Color histogram matching
+     - Style consistency
+     - Occasion appropriateness
+   - Provides comprehensive match scores and detailed analysis
+   - Offers styling suggestions for improvement
 
 ## Model Files
 
@@ -137,6 +175,37 @@ This project uses several large model files that are not included in the reposit
 3. Upload a garment image (clothing item)
 4. Click "Try On Garment" to see the results
 
+#### Guidelines for Good Virtual Try-On Results:
+
+##### Model Images
+- Use full-body photos with the person standing in a neutral pose
+- Use a solid, contrasting background for best results
+- The person should wear simple, solid-colored clothing
+- Resolution should be at least 512x768 pixels
+
+##### Garment Images
+- Use product-style images with the garment against a white/transparent background
+- The garment should be centered and take up most of the frame
+- For tops: show the entire garment from collar to hem
+- For bottoms: show the entire garment from waist to hem
+- Resolution should be at least 512x512 pixels
+
+### Outfit Matching
+
+1. Go to the "Outfit Matcher" section
+2. Upload a top garment image
+3. Upload a bottom garment image
+4. Click "Check Match" to see how well they go together
+5. Review the match score and detailed analysis
+6. Get styling suggestions for improvement
+
+The matching algorithm evaluates:
+- Color harmony using K-means clustering
+- Feature vector similarity
+- Color histogram matching
+- Style consistency
+- Occasion appropriateness
+
 ### Fashion Advice
 
 1. Visit the "Elegance Bot" section
@@ -163,6 +232,8 @@ This project uses several large model files that are not included in the reposit
 | `/api/elegance/chat` | POST | Chat API for the fashion advisor |
 | `/recommendation/matching` | POST | Find matching clothing items |
 | `/recommendation/similarity` | POST | Find similar clothing items |
+| `/match` | POST | Evaluate outfit compatibility |
+| `/compute_match` | POST | Compute outfit match score with pre-processed data |
 | `/health` | GET | Check service health |
 
 ### Internal Service Endpoints
@@ -175,6 +246,7 @@ This project uses several large model files that are not included in the reposit
 | Feature IEP | 7003 | http://localhost:7003 |
 | Virtual Try-On IEP | 7004 | http://localhost:7004 |
 | Elegance Fashion Advisor IEP | 7005 | http://localhost:7005 |
+| Match IEP | 7006 | http://localhost:7006 |
 | Recommendation Data IEP | 7007 | http://localhost:7007 |
 
 ## Development
@@ -207,6 +279,32 @@ The service integrates:
 - **MySQL Database**: For metadata storage and filtering
 - **Google Drive**: For storing and retrieving fashion images
 
+### Match IEP
+
+The Match IEP evaluates compatibility between clothing items with a scoring system:
+
+| Component | Weight | Justification |
+|-----------|--------|---------------|
+| Color Harmony (K-means) | 30% | Visual perception of dominant colors is immediately noticeable |
+| Feature Match | 30% | Deep learning embeddings capture learned patterns of compatibility |
+| Color Histogram | 25% | Detailed color distribution provides nuanced color compatibility |
+| Style Consistency | 10% | Style categorization ensures appropriate pairings |
+| Occasion Appropriateness | 5% | Situational context provides additional context |
+
+## Test Images Guidelines
+
+### For Clothing Analysis
+- Use clear, well-lit photos of clothing items
+- Preferably against a plain background for better detection
+- Include various clothing types (shirts, pants, shoes, etc.)
+- Resolution should be at least 512x512 pixels
+
+### For Outfit Analysis
+- Use full-body photos with multiple visible clothing items
+- Use good lighting conditions
+- Include a variety of clothing styles and items
+- Resolution should be at least 512x768 pixels
+
 ## Known Issues and Limitations
 
 1. **Database Setup**: The recommendation system requires a pre-populated MySQL database and Qdrant collection. Documentation for initial data loading is needed.
@@ -235,6 +333,10 @@ The service integrates:
 
 7. **Batch Processing**: Add support for analyzing multiple images at once.
 
+8. **Swagger Documentation**: Add more comprehensive API documentation.
+
+9. **Vector Database Integration**: Improve integration with Qdrant for faster similarity searches.
+
 ## Cleanup
 
 ```bash
@@ -248,24 +350,16 @@ docker-compose down
 ./clean.sh
 ```
 
-## Contributing
+## Acknowledgments
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project uses the following technologies and services:
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- [FASHN.AI](https://fashn.ai) for virtual try-on capabilities
+- [OpenAI](https://openai.com) for the fashion advisor chatbot
+- [YOLOv8](https://github.com/ultralytics/ultralytics) for object detection and segmentation
+- [Qdrant](https://qdrant.tech/) for vector similarity search
+- [Google Drive API](https://developers.google.com/drive) for image storage
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- FASHN.AI for providing the virtual try-on API
-- OpenAI for the conversational AI capabilities
-- YOLOv8 and Ultralytics for object detection models
-- Qdrant for vector similarity search
-- Google Drive for image storage 
+This project is licensed under the MIT License - see the LICENSE file for details. 
