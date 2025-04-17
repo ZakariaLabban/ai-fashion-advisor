@@ -14,6 +14,11 @@ import uvicorn
 from qdrant_client.http.models import MatchAny
 from dotenv import load_dotenv
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()  # Load from .env file
 
@@ -80,6 +85,16 @@ class SimilarityQuery(BaseModel):
 def get_db_connection():
     return mysql.connector.connect(**MYSQL_CONFIG)
 
+# === Vector Dimension Handler ===
+def pad_vector_to_512(vector):
+    """Pad the input vector with zeros to reach 512 dimensions."""
+    logger.info(f"Original vector length: {len(vector)}")
+    if len(vector) < 512:
+        padded_vector = vector + [0.0] * (512 - len(vector))
+        logger.info(f"Padded vector to length: {len(padded_vector)}")
+        return padded_vector
+    return vector
+
 # === 1. Recommendation Endpoints ===
 from fastapi import Query
 from fastapi import Body
@@ -91,86 +106,96 @@ def get_best_matching_image(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
-    # Normalize gender input
-    if gender:
-        gender = gender.strip().lower()
-        if gender == "male":
-            gender = "MEN"
-        elif gender == "female":
-            gender = "WOMEN"
+    try:
+        # Log vector information
+        logger.info(f"Received vector of length: {len(vector)}")
+        
+        # Normalize gender input
+        if gender:
+            gender = gender.strip().lower()
+            if gender == "male":
+                gender = "MEN"
+            elif gender == "female":
+                gender = "WOMEN"
 
-    # Determine opposite type
-    if type_ == "topwear":
-        opposite_type = "bottomwear"
-    elif type_ == "bottomwear":
-        opposite_type = "topwear"
-    else:
-        raise HTTPException(status_code=400, detail="type_ must be either 'topwear' or 'bottomwear'")
+        # Determine opposite type
+        if type_ == "topwear":
+            opposite_type = "bottomwear"
+        elif type_ == "bottomwear":
+            opposite_type = "topwear"
+        else:
+            raise HTTPException(status_code=400, detail="type_ must be either 'topwear' or 'bottomwear'")
 
-    # Get segmented_pic_ids of opposite type
-    conn = get_db_connection()
-    cursor = conn.cursor()
+        # Get segmented_pic_ids of opposite type
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    query = "SELECT segmented_pic_id FROM segmented_images WHERE 1=1"
-    params = []
+        query = "SELECT segmented_pic_id FROM segmented_images WHERE 1=1"
+        params = []
 
-    if gender:
-        query += " AND gender = %s"
-        params.append(gender)
-    query += " AND type = %s"
-    params.append(opposite_type)
-    if style:
-        query += " AND style = %s"
-        params.append(style)
+        if gender:
+            query += " AND gender = %s"
+            params.append(gender)
+        query += " AND type = %s"
+        params.append(opposite_type)
+        if style:
+            query += " AND style = %s"
+            params.append(style)
 
-    cursor.execute(query, tuple(params))
-    result = [row[0] for row in cursor.fetchall()]
-    if not result:
+        cursor.execute(query, tuple(params))
+        result = [row[0] for row in cursor.fetchall()]
+        if not result:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No matching segmented_pic_ids found.")
+
+        # Qdrant color search
+        filters = {"segmented_pic_ids": result}
+        qdrant_filter = build_qdrant_filter(filters)
+        
+        # Pad vector to expected dimension
+        padded_vector = pad_vector_to_512(vector)
+
+        hits = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector={"name": "color", "vector": padded_vector},
+            query_filter=qdrant_filter,
+            limit=1
+        )
+
+        if not hits:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No match found in Qdrant.")
+
+        top_id = hits[0].payload.get("segmented_pic_id")
+
+        # Get full_image_id from DB
+        cursor.execute("SELECT full_image_id FROM segmented_images WHERE segmented_pic_id = %s", (top_id,))
+        full_image_row = cursor.fetchone()
         conn.close()
-        raise HTTPException(status_code=404, detail="No matching segmented_pic_ids found.")
+        if not full_image_row:
+            raise HTTPException(status_code=404, detail="Full image ID not found.")
+        full_image_id = full_image_row[0]
 
-    # Qdrant color search
-    filters = {"segmented_pic_ids": result}
-    qdrant_filter = build_qdrant_filter(filters)
+        # Download full image from Drive
+        query_full = f"name = '{full_image_id}.jpg' and '{FULL_FOLDER_ID}' in parents"
+        full_results = drive_service.files().list(q=query_full, spaces='drive', fields="files(id, name)").execute()
+        full_files = full_results.get("files", [])
+        if not full_files:
+            raise HTTPException(status_code=404, detail="Full image not found in Drive")
+        full_file_id = full_files[0]["id"]
 
-    hits = qdrant.search(
-        collection_name=COLLECTION_NAME,
-        query_vector={"name": "color", "vector": vector},
-        query_filter=qdrant_filter,
-        limit=1
-    )
+        full_request = drive_service.files().get_media(fileId=full_file_id)
+        full_fh = io.BytesIO()
+        full_downloader = MediaIoBaseDownload(full_fh, full_request)
+        done = False
+        while not done:
+            _, done = full_downloader.next_chunk()
+        full_fh.seek(0)
 
-    if not hits:
-        conn.close()
-        raise HTTPException(status_code=404, detail="No match found in Qdrant.")
-
-    top_id = hits[0].payload.get("segmented_pic_id")
-
-    # Get full_image_id from DB
-    cursor.execute("SELECT full_image_id FROM segmented_images WHERE segmented_pic_id = %s", (top_id,))
-    full_image_row = cursor.fetchone()
-    conn.close()
-    if not full_image_row:
-        raise HTTPException(status_code=404, detail="Full image ID not found.")
-    full_image_id = full_image_row[0]
-
-    # Download full image from Drive
-    query_full = f"name = '{full_image_id}.jpg' and '{FULL_FOLDER_ID}' in parents"
-    full_results = drive_service.files().list(q=query_full, spaces='drive', fields="files(id, name)").execute()
-    full_files = full_results.get("files", [])
-    if not full_files:
-        raise HTTPException(status_code=404, detail="Full image not found in Drive")
-    full_file_id = full_files[0]["id"]
-
-    full_request = drive_service.files().get_media(fileId=full_file_id)
-    full_fh = io.BytesIO()
-    full_downloader = MediaIoBaseDownload(full_fh, full_request)
-    done = False
-    while not done:
-        _, done = full_downloader.next_chunk()
-    full_fh.seek(0)
-
-    return StreamingResponse(full_fh, media_type="image/jpeg")
+        return StreamingResponse(full_fh, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error in get_best_matching_image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/similarity")
 def get_similar_full_image(
@@ -179,83 +204,93 @@ def get_similar_full_image(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
-    # Normalize gender input
-    if gender:
-        gender = gender.strip().lower()
-        if gender == "male":
-            gender = "MEN"
-        elif gender == "female":
-            gender = "WOMEN"
+    try:
+        # Log vector information
+        logger.info(f"Received vector of length: {len(vector)}")
+        
+        # Normalize gender input
+        if gender:
+            gender = gender.strip().lower()
+            if gender == "male":
+                gender = "MEN"
+            elif gender == "female":
+                gender = "WOMEN"
 
-    # Ensure valid type_
-    if type_ not in ["topwear", "bottomwear"]:
-        raise HTTPException(status_code=400, detail="type_ must be either 'topwear' or 'bottomwear'")
+        # Ensure valid type_
+        if type_ not in ["topwear", "bottomwear"]:
+            raise HTTPException(status_code=400, detail="type_ must be either 'topwear' or 'bottomwear'")
 
-    # Step 1: Get segmented_pic_ids of the same type
-    conn = get_db_connection()
-    cursor = conn.cursor()
+        # Step 1: Get segmented_pic_ids of the same type
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    query = "SELECT segmented_pic_id FROM segmented_images WHERE 1=1"
-    params = []
+        query = "SELECT segmented_pic_id FROM segmented_images WHERE 1=1"
+        params = []
 
-    if gender:
-        query += " AND gender = %s"
-        params.append(gender)
-    query += " AND type = %s"
-    params.append(type_)
-    if style:
-        query += " AND style = %s"
-        params.append(style)
+        if gender:
+            query += " AND gender = %s"
+            params.append(gender)
+        query += " AND type = %s"
+        params.append(type_)
+        if style:
+            query += " AND style = %s"
+            params.append(style)
 
-    cursor.execute(query, tuple(params))
-    result = [row[0] for row in cursor.fetchall()]
-    if not result:
+        cursor.execute(query, tuple(params))
+        result = [row[0] for row in cursor.fetchall()]
+        if not result:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No matching segmented_pic_ids found.")
+
+        # Step 2: Qdrant feature vector search
+        filters = {"segmented_pic_ids": result}
+        qdrant_filter = build_qdrant_filter(filters)
+        
+        # Pad vector to expected dimension
+        padded_vector = pad_vector_to_512(vector)
+
+        hits = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector={"name": "feature", "vector": padded_vector},
+            query_filter=qdrant_filter,
+            limit=1
+        )
+
+        if not hits:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No match found in Qdrant.")
+
+        top_id = hits[0].payload.get("segmented_pic_id")
+
+        # Step 3: Get full_image_id from DB
+        cursor.execute("SELECT full_image_id FROM segmented_images WHERE segmented_pic_id = %s", (top_id,))
+        full_image_row = cursor.fetchone()
         conn.close()
-        raise HTTPException(status_code=404, detail="No matching segmented_pic_ids found.")
+        if not full_image_row:
+            raise HTTPException(status_code=404, detail="Full image ID not found.")
 
-    # Step 2: Qdrant feature vector search
-    filters = {"segmented_pic_ids": result}
-    qdrant_filter = build_qdrant_filter(filters)
+        full_image_id = full_image_row[0]
 
-    hits = qdrant.search(
-        collection_name=COLLECTION_NAME,
-        query_vector={"name": "feature", "vector": vector},
-        query_filter=qdrant_filter,
-        limit=1
-    )
+        # Step 4: Download full image from Drive
+        query_full = f"name = '{full_image_id}.jpg' and '{FULL_FOLDER_ID}' in parents"
+        full_results = drive_service.files().list(q=query_full, spaces='drive', fields="files(id, name)").execute()
+        full_files = full_results.get("files", [])
+        if not full_files:
+            raise HTTPException(status_code=404, detail="Full image not found in Drive")
+        full_file_id = full_files[0]["id"]
 
-    if not hits:
-        conn.close()
-        raise HTTPException(status_code=404, detail="No match found in Qdrant.")
+        full_request = drive_service.files().get_media(fileId=full_file_id)
+        full_fh = io.BytesIO()
+        full_downloader = MediaIoBaseDownload(full_fh, full_request)
+        done = False
+        while not done:
+            _, done = full_downloader.next_chunk()
+        full_fh.seek(0)
 
-    top_id = hits[0].payload.get("segmented_pic_id")
-
-    # Step 3: Get full_image_id from DB
-    cursor.execute("SELECT full_image_id FROM segmented_images WHERE segmented_pic_id = %s", (top_id,))
-    full_image_row = cursor.fetchone()
-    conn.close()
-    if not full_image_row:
-        raise HTTPException(status_code=404, detail="Full image ID not found.")
-
-    full_image_id = full_image_row[0]
-
-    # Step 4: Download full image from Drive
-    query_full = f"name = '{full_image_id}.jpg' and '{FULL_FOLDER_ID}' in parents"
-    full_results = drive_service.files().list(q=query_full, spaces='drive', fields="files(id, name)").execute()
-    full_files = full_results.get("files", [])
-    if not full_files:
-        raise HTTPException(status_code=404, detail="Full image not found in Drive")
-    full_file_id = full_files[0]["id"]
-
-    full_request = drive_service.files().get_media(fileId=full_file_id)
-    full_fh = io.BytesIO()
-    full_downloader = MediaIoBaseDownload(full_fh, full_request)
-    done = False
-    while not done:
-        _, done = full_downloader.next_chunk()
-    full_fh.seek(0)
-
-    return StreamingResponse(full_fh, media_type="image/jpeg")
+        return StreamingResponse(full_fh, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error in get_similar_full_image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/recommendation")
 def recommendation_route(
@@ -265,25 +300,26 @@ def recommendation_route(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
-    """
-    Main recommendation endpoint that dispatches to either matching or similarity
-    based on the operation parameter.
-    
-    Args:
-        operation: Either "matching" or "similarity"
-        gender: Optional gender filter (male/female)
-        style: Optional style filter
-        type_: Type of clothing ("topwear" or "bottomwear")
-        vector: Feature vector for similarity, color histogram for matching
+    try:
+        logger.info(f"Recommendation request: {operation}, gender: {gender}, style: {style}, type: {type_}")
+        logger.info(f"Vector length: {len(vector)}")
         
-    Returns:
-        StreamingResponse with JPEG image
-    """
-    if operation == "matching":
-        return get_best_matching_image(gender, style, type_, vector)
-    else:  # Assume similarity for any other value
-        return get_similar_full_image(gender, style, type_, vector)
+        # Pad vector to expected dimension
+        padded_vector = pad_vector_to_512(vector)
+        
+        if operation == "matching":
+            return get_best_matching_image(gender, style, type_, padded_vector)
+        elif operation == "similarity":
+            return get_similar_full_image(gender, style, type_, padded_vector)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid operation. Must be 'matching' or 'similarity'")
+    except HTTPException as he:
+        # Pass through HTTP exceptions
+        raise he
+    except Exception as e:
+        logger.error(f"Error in recommendation route: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 # === Entry point to run from terminal ===
 if __name__ == "__main__":
-    uvicorn.run("reco_data_api:app", host="0.0.0.0", port=8007, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8007)
