@@ -2,6 +2,97 @@ import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import FashionFacts from '../components/FashionFacts'
 
+function FashionInsights() {
+  const insights = [
+    "Style is a way to say who you are without having to speak",
+    "Fashion is about dressing according to what's fashionable. Style is more about being yourself",
+    "The joy of dressing is an art",
+    "Fashion changes, but style endures",
+    "Clothes mean nothing until someone lives in them",
+    "Fashion is what you're offered four times a year by designers. Style is what you choose",
+    "Fashion is the armor to survive everyday life",
+    "Style is knowing who you are, what you want to say, and not giving a damn",
+  ]
+  
+  const [currentInsight, setCurrentInsight] = useState(0)
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentInsight((prev) => (prev + 1) % insights.length)
+    }, 8000)
+    
+    return () => clearInterval(timer)
+  }, [])
+  
+  return (
+    <div className="flex flex-col items-center justify-center mb-6">
+      <div className="h-14 relative flex items-center justify-center w-full overflow-hidden">
+        <p 
+          className="text-lg text-gray-600 italic text-center transition-opacity duration-1000 absolute"
+          style={{ opacity: 1 }}
+        >
+          <i className="fas fa-quote-left text-gray-400 mr-2"></i>
+          {insights[currentInsight]}
+          <i className="fas fa-quote-right text-gray-400 ml-2"></i>
+        </p>
+      </div>
+      <div className="flex space-x-2 mt-2">
+        {insights.map((_, index) => (
+          <button 
+            key={index} 
+            className={`w-2 h-2 rounded-full transition-all ${currentInsight === index ? 'bg-secondary-500 w-4' : 'bg-gray-300'}`}
+            onClick={() => setCurrentInsight(index)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AnimatedClothingIcons() {
+  const icons = ['tshirt', 'socks', 'hat', 'mitten', 'vest', 'user-tie']
+  
+  return (
+    <div className="relative h-32 my-4 overflow-hidden">
+      {icons.map((icon, index) => (
+        <div 
+          key={index} 
+          className="absolute text-3xl animate-float opacity-20"
+          style={{ 
+            left: `${(index * 20) % 100}%`, 
+            top: `${Math.sin(index) * 20 + 40}%`,
+            animationDelay: `${index * 0.5}s`,
+            color: index % 2 === 0 ? 'var(--tw-color-primary-500)' : 'var(--tw-color-secondary-500)'
+          }}
+        >
+          <i className={`fas fa-${icon}`}></i>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Tooltip({ children, tip }) {
+  const [isVisible, setIsVisible] = useState(false)
+  
+  return (
+    <div className="relative inline-block">
+      <div
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+      >
+        {children}
+      </div>
+      {isVisible && (
+        <div className="absolute z-10 w-48 p-2 bg-gray-900 text-white text-sm rounded-md shadow-lg opacity-90 -mt-2 ml-6 animate-fadeIn">
+          {tip}
+          <div className="absolute -left-1 top-3 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Analyze() {
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -1002,18 +1093,25 @@ function Analyze() {
     <div className="py-8 bg-gradient-to-b from-gray-50 to-white min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">Style Analyzer</h1>
+          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600 mb-2">
+            Style Analyzer
+          </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Our AI-powered style analyzer identifies clothing items, classifies style, and extracts feature data
           </p>
+          <FashionInsights />
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8 overflow-hidden border border-gray-100">
+        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8 overflow-hidden border border-gray-100 relative">
+          {/* Decorative elements */}
+          <div className="absolute -top-16 -right-16 w-32 h-32 bg-primary-100 rounded-full opacity-40 blur-xl"></div>
+          <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-secondary-100 rounded-full opacity-40 blur-xl"></div>
+
           {/* Tabs */}
-          <div className="flex border-b border-gray-200 mb-6">
+          <div className="flex border-b border-gray-200 mb-6 relative z-10">
             <button
               onClick={() => setActiveTab('upload')}
-              className={`px-4 py-2 font-medium text-sm mr-2 ${
+              className={`px-4 py-2 font-medium text-sm mr-2 transition-all duration-300 ${
                 activeTab === 'upload'
                   ? 'text-secondary border-b-2 border-secondary'
                   : 'text-gray-500 hover:text-gray-700'
@@ -1025,7 +1123,7 @@ function Analyze() {
             {(results || (rawResponse && rawResponse.includes('<!DOCTYPE html>'))) && (
               <button
                 onClick={() => setActiveTab('results')}
-                className={`px-4 py-2 font-medium text-sm ${
+                className={`px-4 py-2 font-medium text-sm transition-all duration-300 ${
                   activeTab === 'results'
                     ? 'text-secondary border-b-2 border-secondary'
                     : 'text-gray-500 hover:text-gray-700'
@@ -1040,18 +1138,27 @@ function Analyze() {
           {/* Loading with FashionFacts */}
           {loading && (
             <div className="animate-fadeIn">
-              <div className="text-center mb-4">
-                <div className="inline-block mx-auto animate-bounce-slow">
-                  <i className="fas fa-tshirt text-5xl text-indigo-400" />
+              <div className="text-center mb-8">
+                <div className="relative inline-block w-32 h-32">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-24 h-24 border-4 border-secondary-300 border-t-secondary-500 rounded-full animate-spin"></div>
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <i className="fas fa-tshirt text-5xl text-secondary-400 animate-pulse"></i>
+                  </div>
                 </div>
-                <h3 className="mt-4 text-xl font-medium text-gray-700">Analyzing your fashion...</h3>
-                <p className="text-gray-500">Please wait while our AI works its magic</p>
+                <h3 className="mt-6 text-2xl font-medium text-gradient">Analyzing your fashion...</h3>
+                <p className="text-gray-500 mt-2">Please wait while our AI works its magic</p>
               </div>
 
               <FashionFacts />
+              <AnimatedClothingIcons />
 
-              <div className="w-full max-w-md mx-auto bg-gray-200 rounded-full h-2.5 mt-6 overflow-hidden">
-                <div className="bg-gradient-to-r from-indigo-400 to-purple-500 h-2.5 rounded-full animate-progress" />
+              <div className="w-full max-w-md mx-auto mt-8">
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-primary-400 to-secondary-500 h-full animate-progress"></div>
+                </div>
+                <div className="mt-2 text-xs text-gray-500 text-center">Analyzing image and extracting features</div>
               </div>
             </div>
           )}
@@ -1059,46 +1166,108 @@ function Analyze() {
           {/* Upload Tab */}
           {!loading && activeTab === 'upload' && (
             <div className="animate-fadeIn">
-              <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
-                <div className="mb-6">
-                  <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700 mb-2">
-                    Select a fashion image to analyze:
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      id="imageFile"
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      className="block w-full px-3 py-3 text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-secondary"
-                    />
-                    <div className="absolute right-2 top-2 text-gray-400">
-                      <i className="fas fa-image text-xl" />
+              <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+                <div className="mb-8">
+                  <div className="flex justify-between items-center mb-2">
+                    <label htmlFor="imageFile" className="block text-lg font-medium text-gray-700">
+                      Select a fashion image to analyze:
+                    </label>
+                    <Tooltip tip="Upload a clear photo of clothing items. Works best with well-lit, front-facing images.">
+                      <button type="button" className="text-gray-400 hover:text-primary-500 transition-colors">
+                        <i className="fas fa-question-circle"></i>
+                      </button>
+                    </Tooltip>
+                  </div>
+                  
+                  <div 
+                    className={`border-2 border-dashed rounded-xl bg-gray-50 transition-all duration-300 ${file ? 'border-secondary-300 bg-secondary-50' : 'border-gray-300 hover:border-primary-300 hover:bg-primary-50'}`}
+                  >
+                    <div className="px-6 py-10 text-center">
+                      {!file ? (
+                        <>
+                          <div className="mx-auto w-24 h-24 mb-4 text-gray-400">
+                            <i className="fas fa-cloud-upload-alt text-6xl"></i>
+                          </div>
+                          <p className="text-gray-700 font-medium mb-2">Drag and drop your image here</p>
+                          <p className="text-gray-500 text-sm mb-4">or</p>
+                          <label htmlFor="imageFile" className="btn-secondary cursor-pointer inline-block">
+                            <i className="fas fa-image mr-2"></i> Browse files
+                          </label>
+                          <input
+                            type="file"
+                            id="imageFile"
+                            onChange={handleFileChange}
+                            accept="image/*"
+                            className="hidden"
+                          />
+                          <p className="mt-4 text-sm text-gray-500">Supported formats: JPG, PNG, WebP (Max: 10MB)</p>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <div className="text-secondary-500 mb-2">
+                            <i className="fas fa-check-circle text-xl"></i>
+                          </div>
+                          <p className="font-medium text-gray-700 mb-4">{file.name}</p>
+                          <div className="flex space-x-2">
+                            <label htmlFor="imageFile" className="px-4 py-2 bg-gray-200 rounded text-sm text-gray-700 hover:bg-gray-300 transition-colors cursor-pointer">
+                              Change
+                            </label>
+                            <input
+                              type="file"
+                              id="imageFile"
+                              onChange={handleFileChange}
+                              accept="image/*"
+                              className="hidden"
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setFile(null)
+                                setPreviewUrl(null)
+                              }}
+                              className="px-4 py-2 bg-red-100 text-red-600 rounded text-sm hover:bg-red-200 transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <p className="mt-1 text-sm text-gray-500">Supported formats: JPG, PNG, WebP (Max: 10MB)</p>
                 </div>
 
                 {previewUrl && (
-                  <div className="mb-6 text-center p-4 bg-gray-50 rounded-lg">
-                    <h3 className="text-lg font-medium mb-3 text-gray-700">Image Preview</h3>
-                    <div className="relative inline-block group">
+                  <div className="mb-8 text-center p-8 bg-white rounded-lg border border-gray-200 shadow-sm">
+                    <h3 className="text-xl font-medium mb-4 text-gray-700 flex justify-center items-center">
+                      <i className="fas fa-eye mr-2 text-secondary-400"></i>
+                      Image Preview
+                    </h3>
+                    <div className="relative inline-block rounded-lg overflow-hidden group cursor-zoom-in transition-all duration-300">
                       <img
                         src={previewUrl}
                         alt="Preview"
-                        className="max-h-96 rounded-lg shadow-sm transition-all duration-300 group-hover:shadow-md"
+                        className="max-h-96 rounded-lg shadow-sm transition-all duration-500 group-hover:scale-105"
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300 rounded-lg" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4">
+                        <span className="text-white text-sm">
+                          <i className="fas fa-search-plus mr-1"></i> Click to enlarge
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className="text-center mt-8">
+                <div className="text-center mt-10">
                   <button
                     type="submit"
                     disabled={loading || !file}
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                    className="relative overflow-hidden inline-flex items-center px-8 py-4 border border-transparent text-lg font-medium rounded-full shadow-xl text-white bg-gradient-to-r from-secondary-500 to-primary-600 hover:from-secondary-600 hover:to-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:-translate-y-1"
                   >
+                    <span className="absolute inset-0 overflow-hidden rounded-full">
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-r from-secondary-400 to-primary-500 opacity-0 group-hover:opacity-100 transition-all duration-300"></span>
+                      <span className="absolute top-0 right-full w-full h-full bg-gradient-to-r from-transparent to-white/20 animate-shimmer"></span>
+                    </span>
+                    
                     {loading ? (
                       <>
                         <i className="fas fa-circle-notch fa-spin mr-2" />
@@ -1106,16 +1275,20 @@ function Analyze() {
                       </>
                     ) : (
                       <>
-                        <i className="fas fa-search mr-2" />
-                        Analyze Image
+                        <i className="fas fa-magic mr-2" />
+                        Analyze This Outfit
                       </>
                     )}
                   </button>
+                  
+                  {!file && (
+                    <p className="mt-2 text-sm text-gray-500">Please select an image first</p>
+                  )}
                 </div>
               </form>
 
               {error && (
-                <div className="mt-6 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-2xl mx-auto">
+                <div className="mt-8 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-2xl mx-auto animate-fadeIn">
                   <p className="font-medium flex items-center">
                     <i className="fas fa-exclamation-circle mr-2" />
                     Error
@@ -1128,8 +1301,16 @@ function Analyze() {
 
           {/* Debug panel */}
           {debugData && activeTab === 'upload' && !loading && (
-            <div className="mt-6 mb-6 p-4 bg-gray-100 rounded-lg overflow-auto max-h-60 max-w-2xl mx-auto">
-              <h3 className="text-sm font-mono mb-2">Response Data:</h3>
+            <div className="mt-8 mb-6 p-4 bg-gray-100 rounded-lg overflow-auto max-h-60 max-w-2xl mx-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-mono">Response Data:</h3>
+                <button 
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                  onClick={() => setDebugData(null)}
+                >
+                  <i className="fas fa-times"></i> Close
+                </button>
+              </div>
               <pre className="text-xs">{debugData}</pre>
             </div>
           )}
@@ -1137,79 +1318,153 @@ function Analyze() {
           {/* Results Tab */}
           {!loading && activeTab === 'results' && (
             <div className="animate-fadeIn">
-              <div className="flex items-center mb-6">
-                <button onClick={() => setActiveTab('upload')} className="text-secondary hover:text-blue-700 mr-4 flex items-center">
+              <div className="flex items-center mb-8">
+                <button onClick={() => setActiveTab('upload')} className="text-secondary hover:text-secondary-700 mr-4 flex items-center transition-all duration-300 hover:-translate-x-1">
                   <i className="fas fa-arrow-left mr-2" />
                   Back to Upload
                 </button>
-                <h2 className="text-2xl font-bold text-primary">Analysis Results</h2>
+                <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600">
+                  Analysis Results
+                </h2>
+                
+                <button
+                  onClick={() => window.print()}
+                  className="ml-auto text-gray-600 hover:text-primary-500 transition-colors"
+                  title="Print results"
+                >
+                  <i className="fas fa-print"></i>
+                </button>
               </div>
 
               {extractAndRenderResults()}
 
               {results && !rawResponse?.includes('<!DOCTYPE html>') && (
-                <div className="mt-8">
+                <div className="mt-8 animation-delay-300 animate-fadeIn">
                   {results.annotated_image_path && (
-                    <div className="mb-8 text-center">
-                      <h3 className="text-xl font-medium mb-4 inline-block pb-2 border-b-2 border-secondary text-gray-800">
+                    <div className="mb-12 text-center">
+                      <h3 className="text-2xl font-medium mb-8 inline-block pb-2 border-b-2 border-secondary text-gray-800">
                         Analysis Visualization
                       </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all duration-300">
-                          <h4 className="text-lg font-medium mb-3 text-gray-700">Original Image</h4>
-                          <img
-                            src={previewUrl}
-                            alt="Original"
-                            className="max-h-80 mx-auto rounded-lg"
-                          />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+                          <h4 className="text-xl font-medium mb-4 text-gray-700 flex items-center justify-center">
+                            <i className="fas fa-image mr-2 text-primary-400 group-hover:text-primary-500 transition-colors"></i>
+                            Original Image
+                          </h4>
+                          <div className="relative rounded-lg overflow-hidden">
+                            <img
+                              src={previewUrl}
+                              alt="Original"
+                              className="max-h-80 mx-auto rounded-lg hover:scale-105 transition-all duration-500 cursor-zoom-in"
+                              onClick={() => {
+                                // Image popup functionality could be added here
+                                window.open(previewUrl, '_blank')
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-2">
+                              <span className="text-white text-sm px-2 py-1 rounded bg-black/50">
+                                Click to view full size
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all duration-300">
-                          <h4 className="text-lg font-medium mb-3 text-gray-700">Annotated Image</h4>
-                          <img
-                            src={
-                              results.annotated_image_path.startsWith('/')
-                                ? results.annotated_image_path
-                                : `/${results.annotated_image_path}`
-                            }
-                            alt="Analysis"
-                            className="max-h-80 mx-auto rounded-lg"
-                            onError={(e) => {
-                              console.error('Failed to load annotated image:', results.annotated_image_path)
-                              e.target.src = 'https://via.placeholder.com/600x400?text=Not+Available'
-                            }}
-                          />
+                        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+                          <h4 className="text-xl font-medium mb-4 text-gray-700 flex items-center justify-center">
+                            <i className="fas fa-tag mr-2 text-secondary-400 group-hover:text-secondary-500 transition-colors"></i>
+                            Annotated Image
+                          </h4>
+                          <div className="relative rounded-lg overflow-hidden">
+                            <img
+                              src={
+                                results.annotated_image_path.startsWith('/')
+                                  ? results.annotated_image_path
+                                  : `/${results.annotated_image_path}`
+                              }
+                              alt="Analysis"
+                              className="max-h-80 mx-auto rounded-lg hover:scale-105 transition-all duration-500 cursor-zoom-in"
+                              onClick={() => {
+                                // Image popup functionality could be added here
+                                window.open(
+                                  results.annotated_image_path.startsWith('/')
+                                    ? results.annotated_image_path
+                                    : `/${results.annotated_image_path}`,
+                                  '_blank'
+                                )
+                              }}
+                              onError={(e) => {
+                                console.error('Failed to load annotated image:', results.annotated_image_path)
+                                e.target.src = 'https://via.placeholder.com/600x400?text=Not+Available'
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-2">
+                              <span className="text-white text-sm px-2 py-1 rounded bg-black/50">
+                                Click to view full size
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                     {/* Detections */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100">
+                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
                       <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <i className="fas fa-tshirt mr-2 text-secondary" />
+                        <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center mr-3 text-primary-500">
+                          <i className="fas fa-tshirt"></i>
+                        </div>
                         Clothing Items
+                        <Tooltip tip="AI-detected clothing items with confidence scores">
+                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
+                            <i className="fas fa-info-circle text-sm"></i>
+                          </button>
+                        </Tooltip>
                       </h3>
                       <div className="bg-gray-50 p-4 rounded-lg">{displayDetections(results.detections)}</div>
                     </div>
 
                     {/* Style */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100">
+                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
                       <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <i className="fas fa-palette mr-2 text-secondary" />
+                        <div className="w-10 h-10 rounded-full bg-secondary-100 flex items-center justify-center mr-3 text-secondary-500">
+                          <i className="fas fa-palette"></i>
+                        </div>
                         Style Classification
+                        <Tooltip tip="AI-classified fashion styles with confidence scores">
+                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
+                            <i className="fas fa-info-circle text-sm"></i>
+                          </button>
+                        </Tooltip>
                       </h3>
                       <div className="bg-gray-50 p-4 rounded-lg">{displayStyles(results.styles)}</div>
                     </div>
 
                     {/* Features */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100">
+                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
                       <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <i className="fas fa-vector-square mr-2 text-secondary" />
+                        <div className="w-10 h-10 rounded-full bg-accent-100 flex items-center justify-center mr-3 text-accent-500">
+                          <i className="fas fa-vector-square"></i>
+                        </div>
                         Feature Extraction
+                        <Tooltip tip="Extracted features like colors, patterns, and textures">
+                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
+                            <i className="fas fa-info-circle text-sm"></i>
+                          </button>
+                        </Tooltip>
                       </h3>
                       <div className="bg-gray-50 p-4 rounded-lg">{displayFeatures(results.detections)}</div>
                     </div>
+                  </div>
+                  
+                  <div className="flex justify-center mt-12 mb-4">
+                    <button
+                      onClick={() => openRecoModal()}
+                      className="px-6 py-3 bg-gradient-to-r from-secondary-500 to-primary-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex items-center"
+                    >
+                      <i className="fas fa-magic mr-2"></i>
+                      Get Fashion Recommendations
+                    </button>
                   </div>
                 </div>
               )}
