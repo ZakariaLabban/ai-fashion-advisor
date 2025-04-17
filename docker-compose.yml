@@ -58,7 +58,7 @@ services:
       - "7002:8002"
     volumes:
       - ./style_iep:/app
-      - ./style_iep/models:/app/models
+      - ./yolov8_style_model.pt:/app/models/yolov8_style_model.pt
     environment:
       - MODEL_PATH=/app/models/yolov8_style_model.pt
       - CONFIDENCE_THRESHOLD=0.3
