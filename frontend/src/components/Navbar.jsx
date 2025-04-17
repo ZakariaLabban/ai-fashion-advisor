@@ -12,20 +12,37 @@ function Logo({ size = "default" }) {
   const bgSize = sizes[size] || sizes.default
   
   return (
-    <div className="flex items-center">
-      <div className="relative mr-2">
-        <div className={`relative rounded-full ${bgSize} bg-white shadow-md flex items-center justify-center`}>
-          <span className="font-serif font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-secondary-600">A</span>
-          <div className="absolute top-0 right-0 w-2 h-2 bg-accent-400 rounded-full shadow-accent-400/40 shadow-sm"></div>
+    <div className="flex items-center group">
+      <div className="relative mr-3">
+        {/* Decorative ring */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-accent-300/50 to-secondary-400/50 blur-[2px] transform scale-110 group-hover:scale-125 transition-transform duration-500"></div>
+        
+        {/* Main logo container */}
+        <div className={`relative rounded-full ${bgSize} bg-gradient-to-br from-white to-gray-100 shadow-lg border border-white/50 flex items-center justify-center overflow-hidden group-hover:shadow-accent-400/30 group-hover:shadow-lg transition-all duration-500`}>
+          {/* Background glow effect */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary-400/10 to-secondary-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          
+          {/* Logo letter */}
+          <span className="font-serif font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-secondary-600 relative z-10 group-hover:scale-110 transition-transform duration-500">A</span>
+          
+          {/* Accent dot with pulse effect */}
+          <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-accent-400 rounded-full shadow-accent-400/40 shadow-md group-hover:animate-pulse"></div>
+          
+          {/* Subtle shine effect */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/80 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 transform -rotate-45 translate-y-full group-hover:translate-y-0"></div>
         </div>
       </div>
-      <div>
-        <span className="text-lg md:text-xl font-serif font-bold text-white text-shadow">
+      
+      <div className="flex flex-col">
+        <span className="text-lg md:text-xl font-serif font-bold text-white text-shadow group-hover:text-accent-100 transition-colors duration-500">
           AURAI
         </span>
-        <span className="ml-1 text-xs font-light tracking-widest text-white/90">
-          FASHION
-        </span>
+        <div className="flex items-center">
+          <span className="text-xs font-light tracking-widest text-white/90 group-hover:text-white transition-colors duration-500">
+            FASHION
+          </span>
+          <span className="ml-1 w-6 h-[1px] bg-gradient-to-r from-accent-400/0 via-accent-400 to-accent-400/0 transform scale-0 group-hover:scale-100 transition-transform duration-700 origin-left"></span>
+        </div>
       </div>
     </div>
   )

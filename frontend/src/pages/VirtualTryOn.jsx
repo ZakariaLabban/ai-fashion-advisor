@@ -306,8 +306,8 @@ function VirtualTryOn() {
                     <div className="relative">
                       <i className="fas fa-magic text-5xl text-secondary-500 animate-pulse"></i>
                       <div className="absolute -top-1 -right-1 w-3 h-3 bg-accent-400 rounded-full animate-ping"></div>
-                    </div>
                   </div>
+                </div>
                 </div>
                 <h3 className="mt-6 text-2xl font-medium text-transparent bg-clip-text bg-gradient-to-r from-secondary-600 to-primary-600">
                   Creating your virtual outfit...
@@ -380,8 +380,8 @@ function VirtualTryOn() {
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
                         <label className="block text-lg font-medium text-gray-700 mb-3 flex items-center">
                           <i className="fas fa-camera text-secondary-500 mr-2"></i>
-                          Select a full-body photo:
-                        </label>
+                        Select a full-body photo:
+                      </label>
                         <div className="relative group">
                           {!modelFile ? (
                             <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-white hover:border-secondary-200 transition-all duration-300 cursor-pointer">
@@ -394,14 +394,14 @@ function VirtualTryOn() {
                                 <i className="fas fa-upload mr-2"></i>
                                 Browse files
                               </label>
-                              <input
+                        <input
                                 id="modelFile"
-                                type="file"
-                                onChange={handleModelFileChange}
-                                accept="image/*"
+                          type="file"
+                          onChange={handleModelFileChange}
+                          accept="image/*"
                                 className="hidden"
-                              />
-                            </div>
+                        />
+                        </div>
                           ) : (
                             <div className="relative">
                               <div className="flex justify-between items-center mb-3">
@@ -420,7 +420,7 @@ function VirtualTryOn() {
                                   <i className="fas fa-times mr-1"></i>
                                   Remove
                                 </button>
-                              </div>
+                      </div>
                               <div className="border border-secondary-200 rounded-lg p-2 bg-secondary-50">
                                 <div className="flex items-center text-sm text-gray-500 mb-2">
                                   <i className="fas fa-file-image text-secondary-400 mr-2"></i>
@@ -431,7 +431,7 @@ function VirtualTryOn() {
                           )}
                         </div>
                         
-                        <div className="mt-4">
+                      <div className="mt-4">
                           <p className="text-sm text-gray-500">
                             For best results:
                           </p>
@@ -476,15 +476,15 @@ function VirtualTryOn() {
                             />
                             <div className="absolute inset-0 rounded-lg flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300">
                               <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
-                                <button 
-                                  type="button" 
+                              <button 
+                                type="button" 
                                   onClick={() => document.querySelector('#modelFile').click()}
                                   className="bg-white text-gray-800 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-100 transition-all duration-300 mx-2"
-                                >
+                              >
                                   <i className="fas fa-exchange-alt"></i>
-                                </button>
-                              </div>
+                              </button>
                             </div>
+                          </div>
                           </div>
                           <p className="text-sm text-gray-500 mt-3">Click on the image to change it</p>
                         </div>
@@ -531,9 +531,9 @@ function VirtualTryOn() {
                     <div>
                       <p className="text-blue-800 font-medium">Processing Order</p>
                       <p className="text-blue-600 text-sm mt-1">
-                        Garments will be processed in sequence, with each item tried on over the previous result.
+                  Garments will be processed in sequence, with each item tried on over the previous result.
                         This lets you build a complete outfit piece by piece.
-                      </p>
+                </p>
                     </div>
                   </div>
                 </div>
@@ -565,9 +565,9 @@ function VirtualTryOn() {
                           <div className="mb-6">
                             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                               <i className="fas fa-tshirt text-secondary-500 mr-2"></i>
-                              Upload Garment Image
-                            </label>
-                            <div className="relative">
+                            Upload Garment Image
+                          </label>
+                          <div className="relative">
                               {!garment.file ? (
                                 <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-white hover:border-secondary-200 transition-all duration-300 cursor-pointer">
                                   <div className="text-secondary-400 mb-3">
@@ -579,11 +579,11 @@ function VirtualTryOn() {
                                     <i className="fas fa-image mr-2"></i>
                                     Browse files
                                   </label>
-                                  <input
+                            <input
                                     id={`garmentFile-${index}`}
-                                    type="file"
-                                    onChange={(e) => handleGarmentFileChange(index, e)}
-                                    accept="image/*"
+                              type="file"
+                              onChange={(e) => handleGarmentFileChange(index, e)}
+                              accept="image/*"
                                     className="hidden"
                                   />
                                 </div>
@@ -712,7 +712,7 @@ function VirtualTryOn() {
                               type="radio"
                               value="quality"
                               checked={mode === 'quality'}
-                              onChange={(e) => setMode(e.target.value)}
+                          onChange={(e) => setMode(e.target.value)}
                               className="mr-3 h-4 w-4 text-secondary-500 focus:ring-secondary-400"
                             />
                             <div>
@@ -865,7 +865,7 @@ function VirtualTryOn() {
                   <p className="text-gray-600 mt-1">{progressStatus}</p>
                   <div className="w-full bg-white rounded-full h-2 mt-4 overflow-hidden shadow-inner">
                     <div className="bg-gradient-to-r from-secondary-400 to-primary-500 h-2 rounded-full animate-progress"></div>
-                  </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -932,11 +932,11 @@ function VirtualTryOn() {
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300 group">
                       {modelPreview && (
                         <div className="relative overflow-hidden rounded-lg">
-                          <img 
-                            src={modelPreview} 
-                            alt="Original Model" 
+                        <img 
+                          src={modelPreview} 
+                          alt="Original Model" 
                             className="max-h-96 mx-auto rounded-lg shadow-sm transition-all duration-500 group-hover:scale-[1.02]"
-                          />
+                        />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300"></div>
                         </div>
                       )}
@@ -973,16 +973,16 @@ function VirtualTryOn() {
                               >
                                 <i className="fas fa-download"></i>
                               </a>
-                              <a 
-                                href={result.result_image} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
+                            <a 
+                              href={result.result_image} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
                                 className="bg-white text-gray-800 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-100 transition-colors"
-                                title="Open full size image"
-                              >
+                              title="Open full size image"
+                            >
                                 <i className="fas fa-expand"></i>
-                              </a>
-                            </div>
+                            </a>
+                          </div>
                           </div>
                         </div>
                       )}
