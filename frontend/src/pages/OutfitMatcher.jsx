@@ -15,17 +15,6 @@ function OutfitMatcher() {
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
   const [progressStatus, setProgressStatus] = useState('')
-  const [debugInfo, setDebugInfo] = useState(null)
-
-  // Debug mode flag
-  const DEBUG = true;
-
-  // Log function for conditional logging
-  const debugLog = (message, data) => {
-    if (DEBUG) {
-      console.log(`[OutfitMatcher] ${message}`, data);
-    }
-  };
 
   // Handle file change for top item
   const handleTopFileChange = (e) => {
@@ -40,7 +29,6 @@ function OutfitMatcher() {
       setTopPreview(reader.result)
     }
     reader.readAsDataURL(file)
-    debugLog('Top file selected', file.name);
   }
 
   // Handle file change for bottom item
@@ -56,7 +44,6 @@ function OutfitMatcher() {
       setBottomPreview(reader.result)
     }
     reader.readAsDataURL(file)
-    debugLog('Bottom file selected', file.name);
   }
 
   // Handle form submission
@@ -73,7 +60,6 @@ function OutfitMatcher() {
     setError('')
     setResults(null)
     setProgressStatus('Initializing...')
-    setDebugInfo(null)
     
     try {
       // Create FormData object
@@ -81,22 +67,14 @@ function OutfitMatcher() {
       formData.append('topwear', topFile)
       formData.append('bottomwear', bottomFile)
       
-      debugLog('FormData created', {
-        topwear: topFile.name,
-        bottomwear: bottomFile.name
-      });
-      
       // Create a controller for aborting request if it takes too long
       const controller = new AbortController()
       const timeoutId = setTimeout(() => {
-        debugLog('Request timeout triggered', { timeout: '60 seconds' });
         controller.abort()
       }, 60000) // 60 second timeout
       
       setProgressStatus('Starting upload...')
       
-      debugLog('Making API request', '/api/match');
-
       // Make API request with timeout
       const response = await axios.post('/api/match', formData, {
         headers: {
@@ -107,7 +85,6 @@ function OutfitMatcher() {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
           const status = `Uploading images... ${percentCompleted}%`;
           setProgressStatus(status)
-          debugLog('Upload progress', { percent: percentCompleted });
         }
       })
       
@@ -115,59 +92,20 @@ function OutfitMatcher() {
       clearTimeout(timeoutId)
       
       setProgressStatus('Upload complete, processing response...')
-      debugLog('Response received', { status: response.status });
       
       // Check if response has data
       if (!response || !response.data) {
         throw new Error('No data received from server')
       }
       
-      // Always save the response data for debugging, regardless of format
-      setDebugInfo({
-        message: 'Raw server response',
-        data: response.data
-      });
-      
-      // Log the response data for debugging
-      debugLog('Response data', response.data);
-      
-      // Detailed validation of response structure
-      if (!response.data.match_score) {
-        debugLog('Missing match_score in response', response.data);
-        throw new Error('Invalid response format: Missing match_score field');
-      }
-      
-      if (!response.data.analysis) {
-        debugLog('Missing analysis in response', response.data);
-        throw new Error('Invalid response format: Missing analysis field');
-      }
-      
-      debugLog('Response validation passed', { 
-        match_score: response.data.match_score,
-        analysis_keys: Object.keys(response.data.analysis)
-      });
-      
       setProgressStatus('Rendering results...')
       
       // Set results
       setResults(response.data)
       
-      debugLog('Results set successfully', { 
-        match_score: response.data.match_score,
-        analysis_count: Object.keys(response.data.analysis).length,
-        suggestions_count: response.data.suggestions?.length || 0
-      });
-      
     } catch (err) {
       // Clear any results that might be partially set
       setResults(null);
-      
-      debugLog('Error caught', { 
-        name: err.name, 
-        message: err.message, 
-        response: err.response, 
-        stack: err.stack 
-      });
       
       console.error('Error matching outfit:', err)
       
@@ -177,33 +115,16 @@ function OutfitMatcher() {
       } else if (err.response) {
         // The request was made and the server responded with a status code outside of 2xx range
         setError(err.response.data?.detail || `Server error: ${err.response.status}`);
-        setDebugInfo({
-          message: 'Server error response',
-          status: err.response.status,
-          data: err.response.data
-        });
       } else if (err.request) {
         // The request was made but no response was received
         setError('No response received from server. Please check your connection and try again.');
-        setDebugInfo({
-          message: 'No response from server',
-          request: err.request
-        });
       } else {
         // Something happened in setting up the request
         setError(err.message || 'Failed to match outfit. Please try again.');
-        // Keep any debug info that was set earlier
-        if (!debugInfo) {
-          setDebugInfo({
-            message: 'General error',
-            error: err.toString()
-          });
-        }
       }
     } finally {
       setLoading(false)
       setProgressStatus('')
-      debugLog('Request completed', { success: !!results, error: !!error });
     }
   }
 
@@ -258,12 +179,11 @@ function OutfitMatcher() {
     )
   }
 
-  // Log initialization
   useEffect(() => {
-    debugLog('OutfitMatcher component mounted', { debug_mode: DEBUG });
+    // Component initialization code if needed
     
     return () => {
-      debugLog('OutfitMatcher component unmounted', {});
+      // Cleanup code if needed
     };
   }, []);
 
@@ -399,24 +319,6 @@ function OutfitMatcher() {
                       Error
                     </p>
                     <p>{error}</p>
-                    {DEBUG && (
-                      <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
-                        <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {/* Always show debug info in debug mode, even without error */}
-                {!error && debugInfo && DEBUG && (
-                  <div className="mt-6 p-4 bg-blue-50 text-blue-700 rounded-md">
-                    <p className="font-medium flex items-center">
-                      <i className="fas fa-bug mr-2"></i>
-                      Debug Information
-                    </p>
-                    <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
-                      <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-                    </div>
                   </div>
                 )}
                 
@@ -551,17 +453,6 @@ function OutfitMatcher() {
                   </div>
                 )}
                 
-                {DEBUG && (
-                  <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <details>
-                      <summary className="font-medium text-gray-700 cursor-pointer">Debug Information</summary>
-                      <div className="mt-2 p-2 bg-gray-800 text-gray-200 rounded text-xs overflow-auto">
-                        <pre>{JSON.stringify(results, null, 2)}</pre>
-                      </div>
-                    </details>
-                  </div>
-                )}
-                
                 <div className="flex justify-center mt-8">
                   <button
                     onClick={() => {
@@ -570,7 +461,6 @@ function OutfitMatcher() {
                       setBottomFile(null)
                       setTopPreview('')
                       setBottomPreview('')
-                      setDebugInfo(null)
                     }}
                     className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
                   >

@@ -99,13 +99,43 @@ def compute_color_histogram(img_bgr, bins_per_channel=8):
     Compute a color histogram in HSV color space.
     Return shape (bins_per_channel^3,).
     """
-    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    histSize = [bins_per_channel, bins_per_channel, bins_per_channel]
-    ranges = [0, 180, 0, 256, 0, 256]  # HSV
-    channels = [0, 1, 2]
-    hist = cv2.calcHist([img_hsv], channels, None, histSize, ranges)
-    cv2.normalize(hist, hist, alpha=1, beta=0, norm_type=cv2.NORM_L1)
-    return hist.flatten()
+    # Convert to RGB for more intuitive histogram
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    
+    # Extract individual channels
+    r_channel = img_rgb[:, :, 0].flatten()
+    g_channel = img_rgb[:, :, 1].flatten()
+    b_channel = img_rgb[:, :, 2].flatten()
+    
+    # Compute histograms for each channel (simpler approach)
+    r_hist, _ = np.histogram(r_channel, bins=bins_per_channel, range=(0, 256), density=True)
+    g_hist, _ = np.histogram(g_channel, bins=bins_per_channel, range=(0, 256), density=True)
+    b_hist, _ = np.histogram(b_channel, bins=bins_per_channel, range=(0, 256), density=True)
+    
+    # Concatenate for a 1D histogram
+    hist = np.concatenate([r_hist, g_hist, b_hist])
+    
+    # Normalize
+    hist = hist / np.sum(hist)
+    
+    # Log the histogram for debugging
+    logger.info(f"Computed color histogram with {len(hist)} bins")
+    logger.info(f"RGB bin ranges: R={r_hist}, G={g_hist}, B={b_hist}")
+    
+    # Find dominant color from histogram for debugging
+    r_peak_bin = np.argmax(r_hist)
+    g_peak_bin = np.argmax(g_hist)
+    b_peak_bin = np.argmax(b_hist)
+    
+    # Convert bin indices to actual color values
+    bin_width = 256 / bins_per_channel
+    r_peak = int((r_peak_bin + 0.5) * bin_width)
+    g_peak = int((g_peak_bin + 0.5) * bin_width)
+    b_peak = int((b_peak_bin + 0.5) * bin_width)
+    
+    logger.info(f"Dominant color from histogram: RGB({r_peak}, {g_peak}, {b_peak})")
+    
+    return hist
 
 @app.on_event("startup")
 async def startup_event():

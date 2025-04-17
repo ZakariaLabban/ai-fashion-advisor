@@ -97,11 +97,18 @@ def get_color_family(rgb):
     """Determine the color family of an RGB value"""
     r, g, b = rgb
     
+    # Check if values are in 0-1 range and convert to 0-255 if needed
+    if max(r, g, b) <= 1.0:
+        r, g, b = r * 255, g * 255, b * 255
+    
     # Convert RGB to HSV
     h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
     
     # Convert hue to degrees (0-360)
     h_degrees = h * 360
+    
+    # Log for debugging
+    logger.info(f"Color RGB: ({r:.1f}, {g:.1f}, {b:.1f}), HSV: ({h_degrees:.1f}°, {s:.2f}, {v:.2f})")
     
     # Determine color family based on HSV
     if s < 0.15 and v > 0.8:
@@ -1084,11 +1091,69 @@ async def compute_match(request: MatchRequest):
         top_histogram = request.top_histogram
         bottom_histogram = request.bottom_histogram
         
-        # Extract dominant colors - in a full implementation, this would be done by the EEP
-        # or a separate color analysis service. For now, we'll use placeholders
-        # Normally this would be extracted from the images via K-means clustering
-        top_colors = [(0.2, 0.3, 0.8), (0.1, 0.1, 0.1)]  # Placeholder blue and black
-        bottom_colors = [(0.8, 0.8, 0.8), (0.1, 0.1, 0.1)]  # Placeholder white and black
+        # Set default dominant colors in case we can't extract from the histogram
+        top_colors = [(0.2, 0.3, 0.8), (0.1, 0.1, 0.1)]  # Default blue and black
+        bottom_colors = [(0.8, 0.8, 0.8), (0.1, 0.1, 0.1)]  # Default white and black
+        
+        # Try to extract dominant colors from color histograms if available
+        if top_histogram and len(top_histogram) > 0:
+            try:
+                # The histogram is now organized as [R bins..., G bins..., B bins...]
+                # Each channel has bins_per_channel bins (usually 8)
+                hist_length = len(top_histogram)
+                bins_per_channel = hist_length // 3
+                
+                # Get the R, G, B histograms
+                r_hist = top_histogram[:bins_per_channel]
+                g_hist = top_histogram[bins_per_channel:2*bins_per_channel]
+                b_hist = top_histogram[2*bins_per_channel:]
+                
+                # Find the peak bin for each channel
+                r_peak_bin = r_hist.index(max(r_hist))
+                g_peak_bin = g_hist.index(max(g_hist))
+                b_peak_bin = b_hist.index(max(b_hist))
+                
+                # Convert bin indices to color values (0-255)
+                bin_width = 256 / bins_per_channel
+                r_peak = int((r_peak_bin + 0.5) * bin_width)
+                g_peak = int((g_peak_bin + 0.5) * bin_width)
+                b_peak = int((b_peak_bin + 0.5) * bin_width)
+                
+                # Set as the dominant color (in 0-1 range)
+                top_colors[0] = (r_peak / 255, g_peak / 255, b_peak / 255)
+                logger.info(f"Extracted top dominant color: RGB({r_peak}, {g_peak}, {b_peak})")
+            except Exception as e:
+                logger.error(f"Error extracting dominant colors from top histogram: {e}")
+                # Keep using default colors if extraction fails
+        
+        if bottom_histogram and len(bottom_histogram) > 0:
+            try:
+                # Same process for bottom
+                hist_length = len(bottom_histogram)
+                bins_per_channel = hist_length // 3
+                
+                # Get the R, G, B histograms
+                r_hist = bottom_histogram[:bins_per_channel]
+                g_hist = bottom_histogram[bins_per_channel:2*bins_per_channel]
+                b_hist = bottom_histogram[2*bins_per_channel:]
+                
+                # Find the peak bin for each channel
+                r_peak_bin = r_hist.index(max(r_hist))
+                g_peak_bin = g_hist.index(max(g_hist))
+                b_peak_bin = b_hist.index(max(b_hist))
+                
+                # Convert bin indices to color values (0-255)
+                bin_width = 256 / bins_per_channel
+                r_peak = int((r_peak_bin + 0.5) * bin_width)
+                g_peak = int((g_peak_bin + 0.5) * bin_width)
+                b_peak = int((b_peak_bin + 0.5) * bin_width)
+                
+                # Set as the dominant color (in 0-1 range)
+                bottom_colors[0] = (r_peak / 255, g_peak / 255, b_peak / 255)
+                logger.info(f"Extracted bottom dominant color: RGB({r_peak}, {g_peak}, {b_peak})")
+            except Exception as e:
+                logger.error(f"Error extracting dominant colors from bottom histogram: {e}")
+                # Keep using default colors if extraction fails
         
         # If we have actual detections, try to extract more information
         if request.top_detection:
@@ -1101,6 +1166,8 @@ async def compute_match(request: MatchRequest):
         # Get color families (simplified)
         top_color_family = get_color_family(top_colors[0])
         bottom_color_family = get_color_family(bottom_colors[0])
+        
+        logger.info(f"Color families: top={top_color_family}, bottom={bottom_color_family}")
         
         # STEP 1: Calculate match metrics
         
