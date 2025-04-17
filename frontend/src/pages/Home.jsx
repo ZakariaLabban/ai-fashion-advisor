@@ -47,17 +47,18 @@ function Home() {
     <div>
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center">
-        {/* Background Video */}
+        {/* Background Image */}
         <div className="absolute inset-0 z-0 overflow-hidden">
           <div 
-            className="absolute inset-0 bg-gradient-diagonal from-primary-900/80 via-secondary-900/70 to-accent-900/80"
+            className="absolute inset-0 bg-gradient-diagonal from-primary-900/70 via-secondary-900/70 to-accent-900/60"
             style={{ mixBlendMode: 'multiply' }}
           ></div>
           <img 
-            src="https://images.unsplash.com/photo-1532453288672-3a27e9be9efd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80" 
+            src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
             alt="Fashion background" 
             className="absolute inset-0 object-cover w-full h-full"
           />
+          <div className="absolute inset-0 bg-texture-fabric opacity-20"></div>
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-40 relative z-10 text-center">
@@ -85,8 +86,9 @@ function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 bg-gradient-to-br from-white to-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-24 bg-gradient-to-br from-white to-gray-50 relative">
+        <div className="absolute inset-0 bg-texture-paper opacity-10"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center mb-20">
             <h2 className="section-title text-gradient mb-6">
               FASHION REIMAGINED WITH AI
@@ -104,11 +106,12 @@ function Home() {
                   <i className="fas fa-search text-primary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  src="https://images.unsplash.com/photo-1579298245158-33e8f568f7d3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
                   alt="Style Analysis" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-primary-900/70 to-transparent"></div>
+                <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
                 <h3 className="text-2xl font-semibold text-white absolute bottom-4 left-4 right-4">Analyze Your Fit</h3>
               </div>
               <p className="text-gray-600 mb-4">
@@ -126,11 +129,12 @@ function Home() {
                   <i className="fas fa-tshirt text-secondary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1560243563-062bfc001d68?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  src="https://images.unsplash.com/photo-1623934199716-dc28818a6ec7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
                   alt="Virtual Try-On" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-secondary-900/70 to-transparent"></div>
+                <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
                 <h3 className="text-2xl font-semibold text-white absolute bottom-4 left-4 right-4">Fitting Room</h3>
               </div>
               <p className="text-gray-600 mb-4">
@@ -148,11 +152,12 @@ function Home() {
                   <i className="fas fa-comment text-secondary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1585435557343-3b092031a831?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  src="https://images.unsplash.com/photo-1583195764036-6dc248ac07d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2076&q=80" 
                   alt="Elegance Chatbot" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-purple-900/70 to-transparent"></div>
+                <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
                 <h3 className="text-2xl font-semibold text-white absolute bottom-4 left-4 right-4">Elegance Chatbot</h3>
               </div>
               <p className="text-gray-600 mb-4">
@@ -170,11 +175,12 @@ function Home() {
                   <i className="fas fa-sync-alt text-accent-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  src="https://images.unsplash.com/photo-1538329972958-465d6d2144ed?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
                   alt="Outfit Matcher" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-accent-900/70 to-transparent"></div>
+                <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
                 <h3 className="text-2xl font-semibold text-white absolute bottom-4 left-4 right-4">Outfit Matcher</h3>
               </div>
               <p className="text-gray-600 mb-4">
@@ -194,14 +200,15 @@ function Home() {
         <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-white to-transparent"></div>
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-pastel-pink rounded-full opacity-20 blur-xl"></div>
         <div className="absolute top-1/4 -left-20 w-60 h-60 bg-pastel-blue rounded-full opacity-20 blur-xl"></div>
+        <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center mb-16">
             <h2 className="section-title text-gradient mb-6">
-              ABOUT AURAI
+              ABOUT AURAI FASHION
             </h2>
             <p className="section-subtitle">
-              Empowering your fashion journey with AI technology
+              Our mission is to bring AI innovation to fashion, providing tools that enhance your style journey
             </p>
           </div>
 

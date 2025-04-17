@@ -253,11 +253,11 @@ The matching algorithm evaluates:
 
 ### Frontend Development
 
-```bash
-cd frontend
-npm install
-npm start
-```
+   ```bash
+   cd frontend
+   npm install
+   npm start
+   ```
 
 The development server will run at [http://localhost:5173](http://localhost:5173)
 

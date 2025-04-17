@@ -263,14 +263,17 @@ function VirtualTryOn() {
   }
 
   return (
-    <div className="py-8 bg-gradient-to-b from-secondary-50 via-white to-primary-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white py-12 relative">
+      {/* Background texture */}
+      <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-secondary-600 to-primary-600 mb-2">
-            AI Fitting Room
+          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600 mb-2">
+            Virtual Fitting Room
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Experience the future of fashion with our AI-powered virtual try-on technology
+          <p className="mt-4 text-xl text-gray-600 max-w-3xl mx-auto">
+            Experience AI-powered virtual try-on technology. Upload a model photo and garments to create a virtual outfit.
           </p>
           
           <div className="mt-6 flex justify-center">
