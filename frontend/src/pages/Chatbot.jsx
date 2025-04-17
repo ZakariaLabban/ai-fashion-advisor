@@ -1,6 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
-import { format } from 'date-fns'
+
+// Simple function to format time in 12-hour format (e.g., "3:45 PM")
+const formatTime = (date) => {
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const formattedHours = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+  const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+  return `${formattedHours}:${formattedMinutes} ${ampm}`;
+};
 
 function Chatbot() {
   const [messages, setMessages] = useState([
@@ -184,7 +193,7 @@ function Chatbot() {
                   </div>
                   <div className={`text-xs text-gray-500 mt-1 
                     ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
-                    {format(new Date(message.timestamp), 'h:mm a')}
+                    {formatTime(new Date(message.timestamp))}
                   </div>
                 </div>
               </div>
