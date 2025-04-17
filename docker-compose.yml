@@ -82,8 +82,12 @@ services:
     ports:
       - "7004:8004"
     volumes:
-      - ./virtual_tryon_iep:/app
-      - ./virtual_tryon_iep/static:/app/static
+      - type: bind
+        source: ./virtual_tryon_iep
+        target: /app
+      - type: bind
+        source: ./virtual_tryon_iep/static
+        target: /app/static
     environment:
       - FASHN_AI_API_KEY=${FASHN_AI_API_KEY}
       - FASHN_AI_BASE_URL=${FASHN_AI_BASE_URL}
