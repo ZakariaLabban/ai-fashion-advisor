@@ -1,6 +1,36 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 
+// Logo Component
+function Logo({ size = "default" }) {
+  const sizes = {
+    small: "w-8 h-8 text-xl p-2",
+    default: "w-10 h-10 text-2xl p-2",
+    large: "w-14 h-14 text-3xl p-3"
+  }
+  
+  const bgSize = sizes[size] || sizes.default
+  
+  return (
+    <div className="flex items-center">
+      <div className="relative mr-2">
+        <div className={`relative rounded-full ${bgSize} bg-white shadow-md flex items-center justify-center`}>
+          <span className="font-serif font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-secondary-600">A</span>
+          <div className="absolute top-0 right-0 w-2 h-2 bg-accent-400 rounded-full shadow-accent-400/40 shadow-sm"></div>
+        </div>
+      </div>
+      <div>
+        <span className="text-lg md:text-xl font-serif font-bold text-white text-shadow">
+          AURAI
+        </span>
+        <span className="ml-1 text-xs font-light tracking-widest text-white/90">
+          FASHION
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -46,19 +76,14 @@ function Navbar() {
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
       scrolled 
-        ? 'bg-gradient-to-r from-secondary-700 to-secondary-900 shadow-lg py-2' 
+        ? 'bg-gradient-to-r from-secondary-700/95 to-secondary-900/95 shadow-lg py-2' 
         : 'bg-gradient-to-r from-secondary-700/95 to-secondary-900/95 py-4'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0 flex items-center">
-              <span className="text-2xl font-serif font-bold text-white text-shadow">
-                AURAI
-              </span>
-              <span className="ml-2 text-xs font-light tracking-widest text-white/90">
-                FASHION
-              </span>
+              <Logo />
             </Link>
           </div>
 
@@ -110,4 +135,5 @@ function Navbar() {
   )
 }
 
-export default Navbar 
+export { Logo };
+export default Navbar; 

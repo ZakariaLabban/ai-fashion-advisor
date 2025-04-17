@@ -247,11 +247,11 @@ function Chatbot() {
                 </div>
               )}
 
-              {/* Chat messages area */}
-              <div className="h-96 overflow-y-auto p-6 bg-gray-50">
-                {messages.map((message, index) => (
-                  <div 
-                    key={index}
+          {/* Chat messages area */}
+          <div className="h-96 overflow-y-auto p-6 bg-gray-50">
+            {messages.map((message, index) => (
+              <div 
+                key={index}
                     className={`mb-6 ${message.role === 'user' ? 'flex flex-row-reverse' : 'flex'}`}
                   >
                     {/* Avatar */}
@@ -268,24 +268,24 @@ function Chatbot() {
                     <div className="max-w-[75%]">
                       <div 
                         className={`p-4 shadow-sm ${
-                          message.role === 'user' 
+                    message.role === 'user' 
                             ? 'bg-gradient-to-r from-secondary-500 to-secondary-600 text-white rounded-xl rounded-tr-none' 
                             : message.isError 
                               ? 'bg-red-100 text-red-800 rounded-xl rounded-tl-none'
                               : 'bg-white border border-gray-200 text-gray-800 rounded-xl rounded-tl-none'
-                        }`}
-                      >
-                        {message.content}
+                  }`}
+                >
+                  {message.content}
                       </div>
                       <div className={`text-xs text-gray-500 mt-1 
                         ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
                         {formatTime(new Date(message.timestamp))}
                       </div>
-                    </div>
-                  </div>
-                ))}
+                </div>
+              </div>
+            ))}
                 
-                {loading && (
+            {loading && (
                   <div className="mb-6 flex">
                     <div className="flex-shrink-0">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 shadow-md mr-3 flex items-center justify-center">
@@ -294,49 +294,49 @@ function Chatbot() {
                     </div>
                     <div className="max-w-[75%]">
                       <div className="p-4 rounded-xl bg-white border border-gray-200 text-gray-800 rounded-tl-none">
-                        <div className="flex space-x-2">
+                  <div className="flex space-x-2">
                           <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"></div>
                           <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce delay-100"></div>
                           <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce delay-200"></div>
                         </div>
-                      </div>
-                    </div>
                   </div>
-                )}
-                
-                <div ref={messagesEndRef} />
+                </div>
               </div>
+            )}
+                
+            <div ref={messagesEndRef} />
+          </div>
 
-              {/* Input area */}
+          {/* Input area */}
               <div className="p-4 border-t border-gray-200 bg-white">
-                <form onSubmit={handleSubmit} className="flex space-x-2">
-                  <input
+            <form onSubmit={handleSubmit} className="flex space-x-2">
+              <input
                     ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask about styles, outfit combinations, fashion advice..."
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask about styles, outfit combinations, fashion advice..."
                     className="flex-grow px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent"
-                    disabled={loading}
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading || !input.trim()}
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
                     className="bg-gradient-to-r from-primary-500 to-primary-700 hover:from-primary-600 hover:to-primary-800 text-white py-3 px-5 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50"
-                  >
+              >
                     {loading ? (
                       <i className="fas fa-spinner fa-spin"></i>
                     ) : (
-                      <i className="fas fa-paper-plane"></i>
+                <i className="fas fa-paper-plane"></i>
                     )}
-                  </button>
-                </form>
-              </div>
-            </div>
+              </button>
+            </form>
+          </div>
+        </div>
 
             <div className="mt-6 text-center text-gray-500 text-sm">
-              <p>Elegance Bot uses advanced AI to provide fashion advice.</p>
-              <p className="mt-1">Your conversations are not stored permanently.</p>
+          <p>Elegance Bot uses advanced AI to provide fashion advice.</p>
+          <p className="mt-1">Your conversations are not stored permanently.</p>
             </div>
           </div>
         </div>

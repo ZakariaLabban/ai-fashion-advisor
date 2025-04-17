@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import { Logo } from './Navbar'
 
 function Footer() {
   const currentYear = new Date().getFullYear()
@@ -14,127 +15,116 @@ function Footer() {
       </div>
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
-          {/* Brand */}
-          <div className="col-span-1 md:col-span-1">
-            <Link to="/" className="flex items-center mb-6">
-              <span className="text-3xl font-serif font-bold">AURAI</span>
-              <span className="ml-2 text-xs font-light tracking-widest text-white/90">FASHION</span>
-            </Link>
-            <p className="text-gray-300 mb-6">
-              Empowering your fashion journey with AI technology that understands your style preferences.
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
+          <div className="space-y-4">
+            <div className="mb-4">
+              <Logo />
+            </div>
+            
+            <p className="text-gray-400 mt-4 pr-4">
+              Enhance your fashion identity through AI-powered style analysis and recommendations.
             </p>
-            <div className="flex space-x-4">
-              <a href="#" className="text-white hover:text-accent-300 transition-colors duration-300">
-                <i className="fab fa-instagram text-xl"></i>
+            
+            <p className="text-gray-400 font-serif italic mt-2">
+              Aspire. Unveil. Refine.
+            </p>
+            
+            <div className="flex space-x-4 mt-6">
+              <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent-500/20 transition-colors">
+                <i className="fab fa-facebook-f text-white"></i>
               </a>
-              <a href="#" className="text-white hover:text-accent-300 transition-colors duration-300">
-                <i className="fab fa-twitter text-xl"></i>
+              <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent-500/20 transition-colors">
+                <i className="fab fa-twitter text-white"></i>
               </a>
-              <a href="#" className="text-white hover:text-accent-300 transition-colors duration-300">
-                <i className="fab fa-facebook text-xl"></i>
+              <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent-500/20 transition-colors">
+                <i className="fab fa-instagram text-white"></i>
               </a>
-              <a href="#" className="text-white hover:text-accent-300 transition-colors duration-300">
-                <i className="fab fa-pinterest text-xl"></i>
+              <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent-500/20 transition-colors">
+                <i className="fab fa-linkedin-in text-white"></i>
               </a>
             </div>
           </div>
           
-          {/* Quick Links */}
-          <div className="col-span-1">
-            <h3 className="text-xl font-medium mb-6 relative inline-block">
-              Quick Links
-              <span className="absolute -bottom-2 left-0 w-12 h-0.5 bg-accent-500"></span>
-            </h3>
-            <ul className="space-y-3">
+          <div>
+            <h3 className="text-lg font-bold mb-4 border-b border-white/10 pb-2">Features</h3>
+            <ul className="space-y-2">
               <li>
-                <Link to="/" className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                  <i className="fas fa-chevron-right text-xs mr-2 text-accent-500"></i>
-                  Home
+                <Link to="/analyze" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  Analyze Your Outfit
                 </Link>
               </li>
               <li>
-                <Link to="/analyze" className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                  <i className="fas fa-chevron-right text-xs mr-2 text-accent-500"></i>
-                  Analyze Your Fit
+                <Link to="/virtual-tryon" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  Virtual Fitting Room
                 </Link>
               </li>
               <li>
-                <Link to="/virtual-tryon" className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                  <i className="fas fa-chevron-right text-xs mr-2 text-accent-500"></i>
-                  Fitting Room
-                </Link>
-              </li>
-              <li>
-                <Link to="/outfit-matcher" className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                  <i className="fas fa-chevron-right text-xs mr-2 text-accent-500"></i>
+                <Link to="/outfit-matcher" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
                   Outfit Matcher
                 </Link>
               </li>
               <li>
-                <Link to="/chatbot" className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                  <i className="fas fa-chevron-right text-xs mr-2 text-accent-500"></i>
-                  Elegance Bot
+                <Link to="/chatbot" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  Fashion Chatbot
                 </Link>
               </li>
             </ul>
           </div>
           
-          {/* Services */}
-          <div className="col-span-1">
-            <h3 className="text-xl font-medium mb-6 relative inline-block">
-              Our Services
-              <span className="absolute -bottom-2 left-0 w-12 h-0.5 bg-accent-500"></span>
-            </h3>
-            <ul className="space-y-3">
-              <li className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                <i className="fas fa-tshirt text-accent-500 mr-2"></i>
-                Clothing Analysis
+          <div>
+            <h3 className="text-lg font-bold mb-4 border-b border-white/10 pb-2">Quick Links</h3>
+            <ul className="space-y-2">
+              <li>
+                <a href="#about" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  About Us
+                </a>
               </li>
-              <li className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                <i className="fas fa-magic text-accent-500 mr-2"></i>
-                Virtual Try-On
+              <li>
+                <a href="#" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  Privacy Policy
+                </a>
               </li>
-              <li className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                <i className="fas fa-robot text-accent-500 mr-2"></i>
-                Fashion AI Assistant
+              <li>
+                <a href="#" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  Terms of Service
+                </a>
               </li>
-              <li className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                <i className="fas fa-tags text-accent-500 mr-2"></i>
-                Style Matching
-              </li>
-              <li className="text-gray-300 hover:text-white transition-colors duration-300 flex items-center">
-                <i className="fas fa-search text-accent-500 mr-2"></i>
-                Fashion Recommendations
+              <li>
+                <a href="#" className="text-gray-400 hover:text-accent-200 transition-colors flex items-center">
+                  <i className="fas fa-angle-right mr-2 text-accent-500"></i>
+                  FAQs
+                </a>
               </li>
             </ul>
           </div>
           
-          {/* Newsletter */}
-          <div className="col-span-1">
-            <h3 className="text-xl font-medium mb-6 relative inline-block">
-              Newsletter
-              <span className="absolute -bottom-2 left-0 w-12 h-0.5 bg-accent-500"></span>
-            </h3>
-            <p className="text-gray-300 mb-4">
-              Subscribe to our newsletter for the latest fashion trends and AI technology updates.
-            </p>
-            <form className="space-y-2">
-              <div className="relative">
-                <input 
-                  type="email" 
-                  placeholder="Your email address" 
-                  className="w-full px-4 py-3 bg-white/10 backdrop-blur border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500 text-white placeholder-gray-400"
-                />
-              </div>
-              <button 
-                type="submit"
-                className="w-full px-4 py-3 bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors duration-300 flex items-center justify-center"
-              >
-                <span>Subscribe</span>
-                <i className="fas fa-paper-plane ml-2"></i>
-              </button>
-            </form>
+          <div>
+            <h3 className="text-lg font-bold mb-4 border-b border-white/10 pb-2">Contact</h3>
+            <ul className="space-y-3">
+              <li className="flex items-start">
+                <i className="fas fa-map-marker-alt text-accent-500 mr-3 mt-1"></i>
+                <span className="text-gray-400">Beirut, Lebanon</span>
+              </li>
+              <li className="flex items-start">
+                <i className="fas fa-envelope text-accent-500 mr-3 mt-1"></i>
+                <span className="text-gray-400">zbl00@mail.aub.edu</span>
+              </li>
+              <li className="flex items-start">
+                <i className="fas fa-phone-alt text-accent-500 mr-3 mt-1"></i>
+                <span className="text-gray-400">+961 3 408 680</span>
+              </li>
+              <li className="flex items-start">
+                <i className="fas fa-clock text-accent-500 mr-3 mt-1"></i>
+                <span className="text-gray-400">Monday-Friday: 9:00 AM - 6:00 PM</span>
+              </li>
+            </ul>
           </div>
         </div>
         

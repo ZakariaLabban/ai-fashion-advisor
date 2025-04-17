@@ -62,11 +62,32 @@ function Home() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-40 relative z-10 text-center">
+          {/* Logo */}
+          <div className="mb-10 flex justify-center animate-fade-in-down">
+            <div className="bg-white/10 backdrop-blur-sm p-6 rounded-full w-32 h-32 flex items-center justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-accent-400 to-secondary-500 rounded-full blur-sm transform scale-95 opacity-70"></div>
+                <div className="relative bg-white rounded-full p-4 shadow-lg">
+                  <div className="text-3xl font-serif font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-secondary-600 flex items-center justify-center">
+                    <span>A</span>
+                  </div>
+                </div>
+                <div className="absolute top-0 right-0 w-3 h-3 bg-accent-400 rounded-full shadow-accent-400/40 shadow-lg"></div>
+              </div>
+            </div>
+          </div>
+          
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-bold text-white mb-6 drop-shadow-lg animate-fade-in-down">
             <span className="block mb-2">ELEVATE YOUR</span>
             <span className="text-gradient-alt text-shadow-lg">FASHION IDENTITY</span>
           </h1>
-          <p className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10 animate-fade-in-down" style={{ animationDelay: '0.2s' }}>
+          
+          {/* Slogan */}
+          <p className="text-xl md:text-2xl text-white/90 font-serif italic max-w-3xl mx-auto mb-4 animate-fade-in-down" style={{ animationDelay: '0.15s' }}>
+            Aspire. Unveil. Refine.
+          </p>
+          
+          <p className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10 animate-fade-in-down" style={{ animationDelay: '0.3s' }}>
             Discover your true style with AI-powered recommendations tailored just for you.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in-down" style={{ animationDelay: '0.4s' }}>
@@ -96,6 +117,10 @@ function Home() {
             <p className="section-subtitle">
               Explore our suite of intelligent fashion tools designed to transform your style experience
             </p>
+            {/* Slogan as subtitle */}
+            <p className="mt-2 text-lg font-serif italic text-gray-600">
+              Aspire. Unveil. Refine.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -106,7 +131,7 @@ function Home() {
                   <i className="fas fa-search text-primary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1579298245158-33e8f568f7d3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  src="https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
                   alt="Style Analysis" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
@@ -129,7 +154,7 @@ function Home() {
                   <i className="fas fa-tshirt text-secondary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1623934199716-dc28818a6ec7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
+                  src="https://images.unsplash.com/photo-1560243563-062bfc001d68?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
                   alt="Virtual Try-On" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
@@ -152,7 +177,7 @@ function Home() {
                   <i className="fas fa-comment text-secondary-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1583195764036-6dc248ac07d9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2076&q=80" 
+                  src="https://images.unsplash.com/photo-1585435557343-3b092031a831?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
                   alt="Elegance Chatbot" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
@@ -175,7 +200,7 @@ function Home() {
                   <i className="fas fa-sync-alt text-accent-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
                 </div>
                 <img 
-                  src="https://images.unsplash.com/photo-1538329972958-465d6d2144ed?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
+                  src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
                   alt="Outfit Matcher" 
                   className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
                 />
@@ -209,6 +234,9 @@ function Home() {
             </h2>
             <p className="section-subtitle">
               Our mission is to bring AI innovation to fashion, providing tools that enhance your style journey
+            </p>
+            <p className="mt-2 font-serif italic text-xl text-gray-600">
+              Aspire. Unveil. Refine.
             </p>
           </div>
 
