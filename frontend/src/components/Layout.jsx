@@ -6,7 +6,7 @@ import ScrollToTop from './ScrollToTop'
 
 function Layout() {
   return (
-    <div className="min-h-screen flex flex-col bg-fashion-beige">
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <ScrollToTop />
       <Navbar />
       <main className="flex-grow pt-24">
