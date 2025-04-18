@@ -551,21 +551,11 @@ async def home():
         
         <div class="tab-content" id="text2image-content">
             <h2>Fashion Finder - Text to Image Search</h2>
-            <p class="info-text">Describe the clothing item you're looking for, and our AI-powered system will find matching images for you.</p>
-            <div class="info-box" style="background-color: #e1f5fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #03a9f4;">
-                <p style="margin: 0 0 10px 0;"><strong>How to use:</strong> Type a specific clothing item description.</p>
-                <p style="margin: 0;"><strong>Good examples:</strong></p>
-                <ul style="margin: 5px 0 10px 0;">
-                    <li>Red silk evening dress with floral pattern</li>
-                    <li>Men's distressed blue denim jacket</li>
-                    <li>Black leather ankle boots with silver buckles</li>
-                </ul>
-                <p style="margin: 0;"><strong>Note:</strong> Our AI filters non-specific or non-clothing related queries to ensure relevant results.</p>
-            </div>
+            <p class="info-text">Describe the clothing item you're looking for, and we'll find matching images for you.</p>
             <div id="text2image-form-container">
                 <div class="form-group">
-                    <label for="text-query">What clothing are you looking for?</label>
-                    <input type="text" id="text-query" placeholder="e.g., floral summer dress, leather bomber jacket, etc." class="file-input">
+                    <label for="text-query">What are you looking for?</label>
+                    <input type="text" id="text-query" placeholder="e.g., blue floral summer dress, vintage leather jacket, etc." class="file-input">
                 </div>
                 <button id="search-button" type="button">Find Fashion</button>
             </div>
@@ -580,7 +570,7 @@ async def home():
                 <div style="padding: 20px; background-color: #f8d7da; border-radius: 8px; color: #721c24; max-width: 600px; margin: 0 auto;">
                     <h3 id="error-title" style="margin-top: 0;">Error</h3>
                     <p id="error-message">An error occurred during the search.</p>
-                    <p style="margin-top: 20px; font-style: italic; font-size: 0.9em;">Please try a different, more specific clothing search query.</p>
+                    <p style="margin-top: 20px; font-style: italic; font-size: 0.9em;">Please try a different search query.</p>
                 </div>
             </div>
             <script>
@@ -647,8 +637,8 @@ async def home():
                                 
                                 if (error.error === 'not_clothing_related') {
                                     // Not clothing related
-                                    errorTitle.textContent = 'Invalid Search Query';
-                                    errorMessage.textContent = error.message || 'Your query does not appear to be a specific clothing search. Please try again with a detailed clothing description.';
+                                    errorTitle.textContent = 'Not Fashion Related';
+                                    errorMessage.textContent = error.message || 'Your query does not appear to be related to clothing or fashion. Please try a fashion-related query.';
                                 } else if (result.status === 404) {
                                     // No results found
                                     errorTitle.textContent = 'No Results Found';
@@ -3436,7 +3426,7 @@ async def text2image_page(request: SearchRequest):
                     status_code=400,
                     content={
                         "error": "not_clothing_related",
-                        "message": result.get("message", "This doesn't appear to be a specific clothing search. Please provide a clear description of a fashion item (e.g., 'blue denim jacket', 'floral summer dress').")
+                        "message": result.get("message", "Your query is not related to clothing or fashion.")
                     }
                 )
             
