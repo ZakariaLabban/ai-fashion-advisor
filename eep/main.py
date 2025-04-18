@@ -566,13 +566,23 @@ async def home():
                 </div>
                 <p id="no-results-message" style="display: none; color: #e74c3c; font-style: italic;">No matching fashion items found. Please try a different search.</p>
             </div>
+            <div id="text2image-error" style="margin-top: 30px; text-align: center; display: none;">
+                <div style="padding: 20px; background-color: #f8d7da; border-radius: 8px; color: #721c24; max-width: 600px; margin: 0 auto;">
+                    <h3 id="error-title" style="margin-top: 0;">Error</h3>
+                    <p id="error-message">An error occurred during the search.</p>
+                    <p style="margin-top: 20px; font-style: italic; font-size: 0.9em;">Please try a different search query.</p>
+                </div>
+            </div>
             <script>
                 document.addEventListener('DOMContentLoaded', function() {
                     const searchButton = document.getElementById('search-button');
                     const textQuery = document.getElementById('text-query');
                     const resultContainer = document.getElementById('text2image-result');
+                    const errorContainer = document.getElementById('text2image-error');
                     const resultImage = document.getElementById('result-image');
                     const noResultsMessage = document.getElementById('no-results-message');
+                    const errorTitle = document.getElementById('error-title');
+                    const errorMessage = document.getElementById('error-message');
                     
                     searchButton.addEventListener('click', function() {
                         const query = textQuery.value.trim();
@@ -585,7 +595,9 @@ async def home():
                         searchButton.disabled = true;
                         searchButton.textContent = 'Searching...';
                         resultContainer.style.display = 'none';
+                        errorContainer.style.display = 'none';
                         noResultsMessage.style.display = 'none';
+                        resultImage.style.display = 'block';
                         
                         // Send request to API
                         fetch('/text2image', {
@@ -599,27 +611,55 @@ async def home():
                             searchButton.disabled = false;
                             searchButton.textContent = 'Find Fashion';
                             
-                            if (!response.ok) {
-                                throw new Error('Search failed');
-                            }
-                            
-                            if (response.headers.get('content-type').includes('image')) {
-                                return response.blob();
+                            if (response.ok && response.headers.get('content-type').includes('image')) {
+                                return {
+                                    type: 'image',
+                                    data: response.blob()
+                                };
                             } else {
-                                throw new Error('No results found');
+                                return response.json().then(data => ({
+                                    type: 'error',
+                                    data: data,
+                                    status: response.status
+                                }));
                             }
                         })
-                        .then(imageBlob => {
-                            // Display the image
-                            resultImage.src = URL.createObjectURL(imageBlob);
-                            resultContainer.style.display = 'block';
-                            noResultsMessage.style.display = 'none';
+                        .then(result => {
+                            if (result.type === 'image') {
+                                // Display the image
+                                result.data.then(blob => {
+                                    resultImage.src = URL.createObjectURL(blob);
+                                    resultContainer.style.display = 'block';
+                                });
+                            } else {
+                                // Show appropriate error message
+                                const error = result.data;
+                                
+                                if (error.error === 'not_clothing_related') {
+                                    // Not clothing related
+                                    errorTitle.textContent = 'Not Fashion Related';
+                                    errorMessage.textContent = error.message || 'Your query does not appear to be related to clothing or fashion. Please try a fashion-related query.';
+                                } else if (result.status === 404) {
+                                    // No results found
+                                    errorTitle.textContent = 'No Results Found';
+                                    errorMessage.textContent = error.message || 'No matching fashion items found for your query. Please try a different search.';
+                                } else {
+                                    // Other error
+                                    errorTitle.textContent = 'Search Error';
+                                    errorMessage.textContent = error.message || 'An error occurred during the search. Please try again.';
+                                }
+                                
+                                errorContainer.style.display = 'block';
+                            }
                         })
                         .catch(error => {
                             console.error('Error:', error);
-                            resultContainer.style.display = 'block';
-                            noResultsMessage.style.display = 'block';
-                            resultImage.style.display = 'none';
+                            searchButton.disabled = false;
+                            searchButton.textContent = 'Find Fashion';
+                            
+                            errorTitle.textContent = 'Connection Error';
+                            errorMessage.textContent = 'There was a problem connecting to the search service. Please try again later.';
+                            errorContainer.style.display = 'block';
                         });
                     });
                     
@@ -1748,30 +1788,80 @@ async def process_virtual_tryon(
         logger.error(f"Unexpected error in Virtual Try-On processing: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Virtual Try-On processing failed: {str(e)}")
 
-async def process_text2image(client: httpx.AsyncClient, query: str) -> bytes:
+async def process_text2image(client: httpx.AsyncClient, query: str) -> Dict:
     """Process text-to-image request through the Text2Image IEP"""
     try:
-        payload = {
-            "query": query
-        }
-        
-        response = await client.post(
-            f"{TEXT2IMAGE_SERVICE_URL}/text-search",
-            json=payload,
+        # First, check if the query is clothing-related
+        check_response = await client.post(
+            f"{TEXT2IMAGE_SERVICE_URL}/check-query",
+            json={"query": query},
             timeout=float(SERVICE_TIMEOUT)
         )
         
-        response.raise_for_status()
-        return response.content
+        check_response.raise_for_status()
+        check_result = check_response.json()
+        
+        # If query is not clothing-related, return an error
+        if not check_result.get("is_clothing_related", True):
+            return {
+                "is_clothing_related": False,
+                "message": check_result.get("message", "Your query doesn't appear to be related to clothing or fashion.")
+            }
+        
+        # If query is clothing-related, proceed with the image search
+        response = await client.post(
+            f"{TEXT2IMAGE_SERVICE_URL}/text-search",
+            json={"query": query},
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        # If the response is an image, return it
+        if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+            return {
+                "is_clothing_related": True,
+                "is_successful": True,
+                "content": response.content
+            }
+        # If there's an error in the image search process
+        else:
+            error_message = "No matching fashion items found."
+            try:
+                error_detail = response.json().get("detail", error_message)
+            except:
+                error_detail = error_message
+                
+            return {
+                "is_clothing_related": True,
+                "is_successful": False,
+                "message": error_detail
+            }
+            
     except httpx.HTTPStatusError as e:
         logger.error(f"Text2Image service returned error: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Text2Image service error: {e.response.text}")
+        try:
+            error_detail = e.response.json().get("detail", "Error searching for fashion items.")
+        except:
+            error_detail = "Error searching for fashion items."
+            
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": error_detail
+        }
     except httpx.RequestError as e:
         logger.error(f"Error connecting to Text2Image service: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Text2Image service unavailable: {str(e)}")
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": "Text2Image service unavailable."
+        }
     except Exception as e:
         logger.error(f"Unexpected error in Text2Image processing: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Text2Image processing failed: {str(e)}")
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": f"Unexpected error: {str(e)}"
+        }
 
 @app.post("/tryon")
 async def tryon_page(
@@ -3328,15 +3418,40 @@ async def text2image_page(request: SearchRequest):
     try:
         async with httpx.AsyncClient() as client:
             # Process the text2image request
-            image_data = await process_text2image(client, request.query)
+            result = await process_text2image(client, request.query)
             
-            # Return the image directly
-            return StreamingResponse(io.BytesIO(image_data), media_type="image/jpeg")
-    except HTTPException as e:
-        raise e
+            # Check if query is clothing-related
+            if not result.get("is_clothing_related", True):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "not_clothing_related",
+                        "message": result.get("message", "Your query is not related to clothing or fashion.")
+                    }
+                )
+            
+            # If successful and we have image content, return it
+            if result.get("is_successful", False) and "content" in result:
+                return StreamingResponse(io.BytesIO(result["content"]), media_type="image/jpeg")
+            
+            # Otherwise return an error
+            error_code = 404 if "No match found" in result.get("message", "") else 500
+            return JSONResponse(
+                status_code=error_code,
+                content={
+                    "error": "search_failed",
+                    "message": result.get("message", "Failed to find matching fashion items.")
+                }
+            )
     except Exception as e:
         logger.error(f"Error in text2image processing: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing text2image request: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "server_error",
+                "message": f"Error processing request: {str(e)}"
+            }
+        )
 
 if __name__ == "__main__":
     import uvicorn

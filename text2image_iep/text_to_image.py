@@ -10,10 +10,15 @@ import torch
 import io
 from dotenv import load_dotenv
 import os
+import openai
+import json
 
 load_dotenv()
 
 app = FastAPI()
+
+# === Configure OpenAI ===
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # === Load CLIP model and processor ===
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
@@ -58,13 +63,54 @@ def stream_image_from_drive(file_id: str):
     fh.seek(0)
     return fh
 
+# === Check if query is clothing-related ===
+async def is_clothing_related(query: str) -> bool:
+    try:
+        prompt = f"""
+        Determine if the following query is related to clothing or fashion items.
+        
+        Query: "{query}"
+        
+        Answer with only "yes" if the query is clearly about clothing items or fashion, and "no" if it's about something else.
+        """
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful fashion assistant that determines if queries are about clothing items."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=10
+        )
+        
+        answer = response.choices[0].message.content.strip().lower()
+        return "yes" in answer
+    except Exception as e:
+        # If there's an error in the OpenAI service, default to True to avoid blocking legitimate queries
+        print(f"Error checking if query is clothing-related: {str(e)}")
+        return True
+
 # === Request Schema ===
 class SearchRequest(BaseModel):
     query: str
 
+class QueryResponse(BaseModel):
+    is_clothing_related: bool
+    message: str
+
 @app.post("/text-search")
-def stream_top_match(request: SearchRequest):
+async def stream_top_match(request: SearchRequest):
     try:
+        # Step 0: Check if query is clothing-related
+        is_related = await is_clothing_related(request.query)
+        
+        if not is_related:
+            raise HTTPException(
+                status_code=400, 
+                detail="Your query doesn't appear to be related to clothing or fashion. Please try a fashion-related query."
+            )
+        
         # Step 1: Encode text
         query_vector = get_text_embedding(request.query)
 
@@ -92,8 +138,23 @@ def stream_top_match(request: SearchRequest):
         image_bytes = stream_image_from_drive(file_id)
         return StreamingResponse(image_bytes, media_type="image/jpeg")
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/check-query")
+async def check_clothing_query(request: SearchRequest):
+    """Endpoint to check if a query is clothing-related without performing the image search"""
+    try:
+        is_related = await is_clothing_related(request.query)
+        
+        if is_related:
+            return {"is_clothing_related": True, "message": "Query is related to clothing or fashion."}
+        else:
+            return {"is_clothing_related": False, "message": "Query is not related to clothing or fashion."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking query: {str(e)}")
 
 @app.get("/health")
 async def health_check():
