@@ -1791,30 +1791,7 @@ async def process_virtual_tryon(
 async def process_text2image(client: httpx.AsyncClient, query: str) -> Dict:
     """Process text-to-image request through the Text2Image IEP"""
     try:
-        # Basic keyword check to filter out obvious non-clothing queries
-        clothing_keywords = [
-            "shirt", "dress", "pants", "jacket", "skirt", "blouse", "jeans", "sweater", 
-            "coat", "suit", "t-shirt", "tshirt", "hoodie", "shorts", "top", "bottom", 
-            "outfit", "fashion", "wear", "clothes", "clothing", "wardrobe", "apparel",
-            "garment", "attire", "style", "casual", "formal", "hat", "scarf", "shoe", 
-            "sock", "boot", "heel", "sneaker", "sandal", "footwear", "accessory"
-        ]
-        
-        # Convert to lowercase for case-insensitive matching
-        query_lower = query.lower()
-        
-        # Check if any clothing keyword is in the query
-        has_clothing_keyword = any(keyword in query_lower for keyword in clothing_keywords)
-        
-        # If basic check fails, return immediately without calling the API
-        if not has_clothing_keyword:
-            logger.info(f"Query rejected by basic keyword check: '{query}'")
-            return {
-                "is_clothing_related": False,
-                "message": "Your query doesn't appear to be related to clothing or fashion. Please try a fashion-related query."
-            }
-    
-        # First, check if the query is clothing-related using the API
+        # First, check if the query is clothing-related
         check_response = await client.post(
             f"{TEXT2IMAGE_SERVICE_URL}/check-query",
             json={"query": query},

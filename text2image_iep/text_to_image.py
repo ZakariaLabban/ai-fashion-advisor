@@ -10,7 +10,7 @@ import torch
 import io
 from dotenv import load_dotenv
 import os
-from openai import OpenAI
+import openai
 import json
 
 load_dotenv()
@@ -18,7 +18,7 @@ load_dotenv()
 app = FastAPI()
 
 # === Configure OpenAI ===
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # === Load CLIP model and processor ===
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
@@ -66,30 +66,69 @@ def stream_image_from_drive(file_id: str):
 # === Check if query is clothing-related ===
 async def is_clothing_related(query: str) -> bool:
     try:
+        # List of non-clothing related keywords that should be blocked
+        blocked_keywords = [
+            "car", "cars", "vehicle", "animal", "dog", "cat", "food", "fruit", 
+            "vegetable", "computer", "laptop", "phone", "technology", "building", 
+            "house", "landscape", "nature", "abstract", "politics", "religion",
+            "medical", "weapon", "game", "sports"
+        ]
+        
+        # Quick check for obvious non-clothing items
+        query_lower = query.lower()
+        for keyword in blocked_keywords:
+            if keyword in query_lower:
+                print(f"Blocked query containing keyword: {keyword}")
+                return False
+        
+        # Use OpenAI for more nuanced checks
         prompt = f"""
         Determine if the following query is related to clothing or fashion items.
         
         Query: "{query}"
         
-        Answer with only "yes" if the query is clearly about clothing items or fashion, and "no" if it's about something else.
+        Answer with ONLY "yes" if the query is clearly about clothing items or fashion (like shirts, dresses, pants, shoes, etc.), 
+        and "no" for anything else (like food, animals, technology, nature, etc.).
         """
         
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful fashion assistant that determines if queries are about clothing items."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=10
-        )
-        
-        answer = response.choices[0].message.content.strip().lower()
-        print(f"Query: '{query}', Is clothing related: '{answer}'")
-        return "yes" in answer
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a strict fashion assistant that only approves queries related to clothing items."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=10
+            )
+            
+            answer = response.choices[0].message.content.strip().lower()
+            print(f"OpenAI check for '{query}': {answer}")
+            return "yes" in answer
+        except Exception as e:
+            print(f"Error in OpenAI check: {str(e)}")
+            
+            # Fallback to a more robust keyword check if OpenAI fails
+            clothing_keywords = [
+                "shirt", "dress", "pants", "jeans", "skirt", "jacket", "coat", "sweater", 
+                "hoodie", "t-shirt", "tshirt", "blouse", "top", "shorts", "trousers", 
+                "shoes", "boots", "sneakers", "heels", "sandals", "hat", "cap", "scarf", 
+                "gloves", "socks", "underwear", "suit", "tuxedo", "gown", "outfit", 
+                "fashion", "clothing", "apparel", "garment", "wear", "attire", "style"
+            ]
+            
+            # Check if any clothing keyword is in the query
+            for keyword in clothing_keywords:
+                if keyword in query_lower:
+                    print(f"Allowing query containing clothing keyword: {keyword}")
+                    return True
+                    
+            # If no clothing keywords found, reject the query
+            print(f"No clothing keywords found in query: {query}")
+            return False
     except Exception as e:
-        # If there's an error in the OpenAI service, we'll be strict and default to False
-        print(f"Error checking if query is clothing-related: {str(e)}")
+        print(f"Critical error in clothing check: {str(e)}")
+        # In case of any exception, be strict and return False to prevent non-clothing queries
         return False
 
 # === Request Schema ===
@@ -107,10 +146,13 @@ async def stream_top_match(request: SearchRequest):
         is_related = await is_clothing_related(request.query)
         
         if not is_related:
+            print(f"Rejected non-clothing query: '{request.query}'")
             raise HTTPException(
                 status_code=400, 
                 detail="Your query doesn't appear to be related to clothing or fashion. Please try a fashion-related query."
             )
+        
+        print(f"Processing clothing-related query: '{request.query}'")
         
         # Step 1: Encode text
         query_vector = get_text_embedding(request.query)
@@ -136,26 +178,34 @@ async def stream_top_match(request: SearchRequest):
             raise HTTPException(status_code=404, detail=f"File '{filename}' not found in Drive.")
 
         # Step 5: Stream image back
+        print(f"Found image match for query: '{request.query}'")
         image_bytes = stream_image_from_drive(file_id)
         return StreamingResponse(image_bytes, media_type="image/jpeg")
 
     except HTTPException as e:
+        print(f"HTTP Exception during image search: {e.detail}")
         raise e
     except Exception as e:
+        print(f"Unexpected error during image search: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/check-query")
 async def check_clothing_query(request: SearchRequest):
     """Endpoint to check if a query is clothing-related without performing the image search"""
     try:
+        print(f"Checking if query is clothing-related: '{request.query}'")
         is_related = await is_clothing_related(request.query)
         
         if is_related:
+            print(f"Query is clothing-related: '{request.query}'")
             return {"is_clothing_related": True, "message": "Query is related to clothing or fashion."}
         else:
+            print(f"Query is NOT clothing-related: '{request.query}'")
             return {"is_clothing_related": False, "message": "Query is not related to clothing or fashion."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error checking query: {str(e)}")
+        print(f"Error checking query: {str(e)}")
+        # In case of any exception, assume it's not clothing-related to be safe
+        return {"is_clothing_related": False, "message": f"Error checking query: {str(e)}"}
 
 @app.get("/health")
 async def health_check():

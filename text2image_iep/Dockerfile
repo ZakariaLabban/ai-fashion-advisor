@@ -7,9 +7,8 @@ WORKDIR /app
 # Copy only requirement-related files
 COPY requirements.txt ./
 
-# Install Python dependencies (with no-cache to ensure we get the latest versions)
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download CLIP model and processor during build
 RUN python3 -c "\
