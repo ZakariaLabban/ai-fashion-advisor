@@ -100,8 +100,28 @@ function FashionFinder() {
 
   // Scroll to bottom of chat whenever messages change
   useEffect(() => {
-    scrollToBottom();
+    // Only auto-scroll if user is already near the bottom or if there's a new user message
+    const shouldScroll = isNearBottom() || messages.length > 0 && messages[messages.length - 1].role === 'user';
+    
+    if (shouldScroll) {
+      scrollToBottom();
+    }
   }, [messages]);
+
+  // Check if the user is near the bottom of the chat
+  const isNearBottom = () => {
+    if (!messagesEndRef.current) return true;
+    
+    const chatContainer = messagesEndRef.current.parentElement.parentElement;
+    const threshold = 150; // pixels from bottom to trigger auto-scroll
+    
+    const distanceFromBottom = 
+      chatContainer.scrollHeight - 
+      chatContainer.scrollTop - 
+      chatContainer.clientHeight;
+      
+    return distanceFromBottom < threshold;
+  };
 
   // Focus input on load
   useEffect(() => {
@@ -110,6 +130,21 @@ function FashionFinder() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Function to handle image downloads
+  const handleDownloadImage = (imageUrl, query) => {
+    // Create a safe filename from the query
+    const safeQuery = query.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30);
+    const fileName = `fashion-item-${safeQuery}-${Date.now()}.jpg`;
+    
+    // Create a temporary link element
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSubmit = async (e) => {
@@ -125,6 +160,9 @@ function FashionFinder() {
     };
     setMessages(prev => [...prev, userMessage]);
     
+    // Store the current query for reference
+    const currentQuery = input;
+    
     // Clear input and show loading state
     setInput('');
     setLoading(true);
@@ -134,7 +172,7 @@ function FashionFinder() {
     try {
       // First, check if the query is valid
       const checkResponse = await axios.post('/api/check-query', {
-        query: input
+        query: currentQuery
       });
       
       if (checkResponse.data.is_clothing_related) {
@@ -150,7 +188,7 @@ function FashionFinder() {
         
         // Then get the actual image
         const imageResponse = await axios.post('/api/text-search', {
-          query: input
+          query: currentQuery
         }, {
           responseType: 'blob' // Important: we need to get a blob for the image
         });
@@ -165,7 +203,8 @@ function FashionFinder() {
           content: `I found this item matching your request:`,
           timestamp: new Date(),
           persona: selectedPersona.name,
-          image: imageUrl
+          image: imageUrl,
+          relatedQuery: currentQuery // Store the query that produced this image
         };
         
         // Replace the processing message with the success message
@@ -407,13 +446,21 @@ function FashionFinder() {
                       </div>
                       
                       {message.image && (
-                        <div className="mt-3 rounded-lg overflow-hidden border shadow-sm">
+                        <div className="mt-3 rounded-lg overflow-hidden border shadow-sm relative group">
                           <img 
                             src={message.image} 
                             alt="Fashion item" 
                             className="w-full object-cover"
-                            onLoad={scrollToBottom}
                           />
+                          <div className="absolute bottom-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleDownloadImage(message.image, message.relatedQuery || "fashion-item")}
+                              className="bg-white/90 hover:bg-white text-secondary-700 p-2 rounded-full shadow-md transition-all hover:scale-105"
+                              title="Download image"
+                            >
+                              <i className="fas fa-download"></i>
+                            </button>
+                          </div>
                         </div>
                       )}
                       
