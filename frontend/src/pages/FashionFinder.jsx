@@ -47,7 +47,7 @@ function FashionFinder() {
   const [error, setError] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [displayedImage, setDisplayedImage] = useState(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   
   // Refs
   const messagesEndRef = useRef(null);
@@ -98,49 +98,28 @@ function FashionFinder() {
         persona: selectedPersona.name
       }
     ]);
-    setAutoScroll(true);
+    // Initial scroll is allowed
+    setTimeout(() => scrollToBottom(), 100);
   }, [selectedPersona]);
 
-  // Only scroll to bottom on initial load or when manually requested
-  useEffect(() => {
-    if (autoScroll && messages.length > 0) {
-      scrollToBottom();
-    }
-  }, [autoScroll, messages]);
-
-  // Detect when user manually scrolls
-  useEffect(() => {
-    const container = chatContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      // If user scrolls up, disable auto-scrolling
-      const isAtBottom = 
-        Math.abs(
-          container.scrollHeight - 
-          container.scrollTop - 
-          container.clientHeight
-        ) < 5;
-      
-      // Only change auto-scroll if it's currently true and user has scrolled away from bottom
-      if (autoScroll && !isAtBottom) {
-        setAutoScroll(false);
-      }
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Manual scroll to bottom function that also re-enables auto-scroll
+  // Manual scroll to bottom - NEVER automatic
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   };
+
+  // Only scroll when explicitly requested via the shouldScrollToBottom state
+  useEffect(() => {
+    if (shouldScrollToBottom) {
+      scrollToBottom();
+      setShouldScrollToBottom(false);
+    }
+  }, [shouldScrollToBottom]);
 
   // Function to handle manual scroll to bottom
   const handleScrollToBottom = () => {
-    setAutoScroll(true);
-    setTimeout(scrollToBottom, 100);
+    scrollToBottom();
   };
 
   // Focus input on load
@@ -168,9 +147,6 @@ function FashionFinder() {
     
     if (!input.trim()) return;
     
-    // Re-enable auto-scroll when user sends a message
-    setAutoScroll(true);
-    
     // Add user message to chat
     const userMessage = { 
       role: 'user', 
@@ -187,6 +163,9 @@ function FashionFinder() {
     setLoading(true);
     setError(null);
     setShowSuggestions(false);
+    
+    // Scroll to bottom when user sends a message
+    scrollToBottom();
 
     try {
       // First, check if the query is valid
@@ -204,6 +183,8 @@ function FashionFinder() {
           isProcessing: true
         };
         setMessages(prev => [...prev, processingMessage]);
+        
+        // No auto-scroll after adding processing message
         
         // Then get the actual image
         const imageResponse = await axios.post('/api/text-search', {
@@ -230,6 +211,8 @@ function FashionFinder() {
         setMessages(prev => prev.map(msg => 
           msg.isProcessing ? successMessage : msg
         ));
+        
+        // No auto-scroll after adding success message
       } else {
         // If query is not fashion-related
         const invalidMessage = {
@@ -522,7 +505,7 @@ function FashionFinder() {
                   Ask about specific clothing items, colors, styles, or occasions
                 </div>
                 
-                {!autoScroll && messages.length > 3 && (
+                {messages.length > 3 && (
                   <button 
                     onClick={handleScrollToBottom}
                     className="text-xs text-secondary-600 hover:text-secondary-800 flex items-center"
