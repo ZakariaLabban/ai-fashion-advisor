@@ -8,7 +8,8 @@ function Home() {
     feature1: false,
     feature2: false,
     feature3: false,
-    feature4: false
+    feature4: false,
+    feature5: false
   })
 
   // Handle scroll effects
@@ -21,6 +22,7 @@ function Home() {
       const feature2 = document.getElementById('feature-2')
       const feature3 = document.getElementById('feature-3')
       const feature4 = document.getElementById('feature-4')
+      const feature5 = document.getElementById('feature-5')
       
       if (feature1 && window.scrollY > feature1.offsetTop - window.innerHeight * 0.8) {
         setIsVisible(prev => ({ ...prev, feature1: true }))
@@ -33,6 +35,9 @@ function Home() {
       }
       if (feature4 && window.scrollY > feature4.offsetTop - window.innerHeight * 0.8) {
         setIsVisible(prev => ({ ...prev, feature4: true }))
+      }
+      if (feature5 && window.scrollY > feature5.offsetTop - window.innerHeight * 0.8) {
+        setIsVisible(prev => ({ ...prev, feature5: true }))
       }
     }
     
@@ -123,7 +128,7 @@ function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8">
             {/* Feature 1 */}
             <div id="feature-1" className={`card-glass group ${isVisible.feature1 ? 'animate-fade-in-up' : 'opacity-0'}`} style={{ transitionDelay: '0.1s' }}>
               <div className="h-60 bg-gradient-to-br from-primary-100 to-primary-50 rounded-lg mb-6 overflow-hidden relative">
@@ -215,6 +220,30 @@ function Home() {
                 Match Now <i className="fas fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
               </Link>
             </div>
+            
+            {/* Feature 5 - New Fashion Finder Feature */}
+            <div id="feature-5" className={`card-glass group ${isVisible.feature5 ? 'animate-fade-in-up' : 'opacity-0'}`} style={{ transitionDelay: '0.5s' }}>
+              <div className="h-60 bg-gradient-to-br from-teal-100 to-teal-50 rounded-lg mb-6 overflow-hidden relative">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <i className="fas fa-search-dollar text-teal-400 text-6xl opacity-20 group-hover:scale-110 transition-transform duration-500"></i>
+                </div>
+                <img 
+                  src="https://images.unsplash.com/photo-1571875257727-256c39da42af?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=870&q=80" 
+                  alt="Fashion Finder" 
+                  className="w-full h-full object-cover rounded-lg opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-teal-900/70 to-transparent"></div>
+                <div className="absolute inset-0 bg-texture-fabric opacity-10"></div>
+                <h3 className="text-2xl font-semibold text-white absolute bottom-4 left-4 right-4">Fashion Finder</h3>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Describe what you're looking for and our AI will find the perfect fashion items in our collection.
+              </p>
+              <Link to="/fashion-finder" className="text-teal-500 font-medium hover:text-teal-700 inline-flex items-center">
+                Find Now <i className="fas fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
+              </Link>
+            </div>
+            
           </div>
         </div>
       </section>
