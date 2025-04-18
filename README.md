@@ -1,9 +1,6 @@
 # AI Fashion Advisor
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/)
-[![React](https://img.shields.io/badge/React-18.0-blue.svg)](https://reactjs.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
+
 
 A comprehensive system that combines computer vision and artificial intelligence to provide fashion analysis, virtual try-on, personalized style advice, and clothing recommendations.
 
