@@ -551,11 +551,14 @@ async def home():
         
         <div class="tab-content" id="text2image-content">
             <h2>Fashion Finder - Text to Image Search</h2>
-            <p class="info-text">Describe the clothing item you're looking for, and we'll find matching images for you.</p>
+            <p class="info-text">Describe the clothing item you're looking for, and we'll find matching images from our fashion dataset.</p>
             <div id="text2image-form-container">
                 <div class="form-group">
                     <label for="text-query">What are you looking for?</label>
                     <input type="text" id="text-query" placeholder="e.g., blue floral summer dress, vintage leather jacket, etc." class="file-input">
+                </div>
+                <div class="info-text" style="margin-bottom: 10px; color: #666;">
+                    <strong>Examples of good queries:</strong> red midi dress, blue denim jacket, floral print blouse, striped t-shirt, black leather boots
                 </div>
                 <button id="search-button" type="button">Find Fashion</button>
             </div>
@@ -570,7 +573,15 @@ async def home():
                 <div style="padding: 20px; background-color: #f8d7da; border-radius: 8px; color: #721c24; max-width: 600px; margin: 0 auto;">
                     <h3 id="error-title" style="margin-top: 0;">Error</h3>
                     <p id="error-message">An error occurred during the search.</p>
-                    <p style="margin-top: 20px; font-style: italic; font-size: 0.9em;">Please try a different search query.</p>
+                    <div id="error-suggestions" style="margin-top: 15px; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
+                        <p><strong>Suggestions:</strong></p>
+                        <ul style="text-align: left; margin: 5px 0 0 0; padding-left: 20px;">
+                            <li>Make sure your query is about clothing items</li>
+                            <li>Be specific about colors, styles, or garment types</li>
+                            <li>Keep queries short and focused</li>
+                            <li>Try using fashion terminology</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
             <script>
@@ -583,6 +594,7 @@ async def home():
                     const noResultsMessage = document.getElementById('no-results-message');
                     const errorTitle = document.getElementById('error-title');
                     const errorMessage = document.getElementById('error-message');
+                    const errorSuggestions = document.getElementById('error-suggestions');
                     
                     searchButton.addEventListener('click', function() {
                         const query = textQuery.value.trim();
@@ -639,14 +651,47 @@ async def home():
                                     // Not clothing related
                                     errorTitle.textContent = 'Not Fashion Related';
                                     errorMessage.textContent = error.message || 'Your query does not appear to be related to clothing or fashion. Please try a fashion-related query.';
+                                    
+                                    // Show specific suggestions for non-clothing queries
+                                    errorSuggestions.innerHTML = `
+                                        <p><strong>Try queries like:</strong></p>
+                                        <ul style="text-align: left; margin: 5px 0 0 0; padding-left: 20px;">
+                                            <li>"red midi dress"</li>
+                                            <li>"blue denim jacket"</li>
+                                            <li>"black leather boots"</li>
+                                            <li>"floral print blouse"</li>
+                                            <li>"striped t-shirt"</li>
+                                        </ul>
+                                    `;
                                 } else if (result.status === 404) {
                                     // No results found
                                     errorTitle.textContent = 'No Results Found';
                                     errorMessage.textContent = error.message || 'No matching fashion items found for your query. Please try a different search.';
+                                    
+                                    // Show suggestions for no results
+                                    errorSuggestions.innerHTML = `
+                                        <p><strong>Suggestions:</strong></p>
+                                        <ul style="text-align: left; margin: 5px 0 0 0; padding-left: 20px;">
+                                            <li>Try more general terms (e.g., "dress" instead of "evening gown")</li>
+                                            <li>Check for typos in your query</li>
+                                            <li>Use common colors (red, blue, black, etc.)</li>
+                                            <li>Use basic clothing terms (shirt, pants, dress, etc.)</li>
+                                        </ul>
+                                    `;
                                 } else {
                                     // Other error
                                     errorTitle.textContent = 'Search Error';
                                     errorMessage.textContent = error.message || 'An error occurred during the search. Please try again.';
+                                    
+                                    // General suggestions
+                                    errorSuggestions.innerHTML = `
+                                        <p><strong>Suggestions:</strong></p>
+                                        <ul style="text-align: left; margin: 5px 0 0 0; padding-left: 20px;">
+                                            <li>Try again in a few moments</li>
+                                            <li>Use simpler search terms</li>
+                                            <li>Make sure your query is about clothing items</li>
+                                        </ul>
+                                    `;
                                 }
                                 
                                 errorContainer.style.display = 'block';
@@ -659,6 +704,14 @@ async def home():
                             
                             errorTitle.textContent = 'Connection Error';
                             errorMessage.textContent = 'There was a problem connecting to the search service. Please try again later.';
+                            errorSuggestions.innerHTML = `
+                                <p><strong>Suggestions:</strong></p>
+                                <ul style="text-align: left; margin: 5px 0 0 0; padding-left: 20px;">
+                                    <li>Check your internet connection</li>
+                                    <li>Refresh the page and try again</li>
+                                    <li>Try again in a few minutes</li>
+                                </ul>
+                            `;
                             errorContainer.style.display = 'block';
                         });
                     });
@@ -3426,7 +3479,7 @@ async def text2image_page(request: SearchRequest):
                     status_code=400,
                     content={
                         "error": "not_clothing_related",
-                        "message": result.get("message", "Your query is not related to clothing or fashion.")
+                        "message": "Your query does not appear to be about clothing or fashion items. Please try a fashion-related query such as 'red summer dress' or 'blue denim jacket'."
                     }
                 )
             
@@ -3436,11 +3489,17 @@ async def text2image_page(request: SearchRequest):
             
             # Otherwise return an error
             error_code = 404 if "No match found" in result.get("message", "") else 500
+            
+            if error_code == 404:
+                error_message = "No matching fashion items found in our dataset. Please try a different query."
+            else:
+                error_message = result.get("message", "An error occurred while processing your request.")
+                
             return JSONResponse(
                 status_code=error_code,
                 content={
                     "error": "search_failed",
-                    "message": result.get("message", "Failed to find matching fashion items.")
+                    "message": error_message
                 }
             )
     except Exception as e:
@@ -3449,7 +3508,7 @@ async def text2image_page(request: SearchRequest):
             status_code=500,
             content={
                 "error": "server_error",
-                "message": f"Error processing request: {str(e)}"
+                "message": "An unexpected error occurred. Please try again later."
             }
         )
 

@@ -11,5 +11,5 @@ google-auth-httplib2
 pydantic
 pillow
 python-dotenv
-openai==0.28.0
+openai>=1.0.0
 
