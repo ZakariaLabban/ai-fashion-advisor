@@ -47,9 +47,11 @@ function FashionFinder() {
   const [error, setError] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [displayedImage, setDisplayedImage] = useState(null);
+  const [autoScroll, setAutoScroll] = useState(true);
   
   // Refs
   const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
   const inputRef = useRef(null);
   
   // Suggested fashion queries
@@ -96,41 +98,55 @@ function FashionFinder() {
         persona: selectedPersona.name
       }
     ]);
+    setAutoScroll(true);
   }, [selectedPersona]);
 
-  // Scroll to bottom of chat whenever messages change
+  // Only scroll to bottom on initial load or when manually requested
   useEffect(() => {
-    // Only auto-scroll if user is already near the bottom or if there's a new user message
-    const shouldScroll = isNearBottom() || messages.length > 0 && messages[messages.length - 1].role === 'user';
-    
-    if (shouldScroll) {
+    if (autoScroll && messages.length > 0) {
       scrollToBottom();
     }
-  }, [messages]);
+  }, [autoScroll, messages]);
 
-  // Check if the user is near the bottom of the chat
-  const isNearBottom = () => {
-    if (!messagesEndRef.current) return true;
-    
-    const chatContainer = messagesEndRef.current.parentElement.parentElement;
-    const threshold = 150; // pixels from bottom to trigger auto-scroll
-    
-    const distanceFromBottom = 
-      chatContainer.scrollHeight - 
-      chatContainer.scrollTop - 
-      chatContainer.clientHeight;
+  // Detect when user manually scrolls
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // If user scrolls up, disable auto-scrolling
+      const isAtBottom = 
+        Math.abs(
+          container.scrollHeight - 
+          container.scrollTop - 
+          container.clientHeight
+        ) < 5;
       
-    return distanceFromBottom < threshold;
+      // Only change auto-scroll if it's currently true and user has scrolled away from bottom
+      if (autoScroll && !isAtBottom) {
+        setAutoScroll(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Manual scroll to bottom function that also re-enables auto-scroll
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Function to handle manual scroll to bottom
+  const handleScrollToBottom = () => {
+    setAutoScroll(true);
+    setTimeout(scrollToBottom, 100);
   };
 
   // Focus input on load
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   // Function to handle image downloads
   const handleDownloadImage = (imageUrl, query) => {
@@ -151,6 +167,9 @@ function FashionFinder() {
     e.preventDefault();
     
     if (!input.trim()) return;
+    
+    // Re-enable auto-scroll when user sends a message
+    setAutoScroll(true);
     
     // Add user message to chat
     const userMessage = { 
@@ -412,7 +431,10 @@ function FashionFinder() {
             </div>
             
             {/* Chat messages */}
-            <div className="flex-1 overflow-y-auto p-4 bg-pattern-light">
+            <div 
+              ref={chatContainerRef} 
+              className="flex-1 overflow-y-auto p-4 bg-pattern-light"
+            >
               <div className="space-y-4">
                 {messages.map((message, index) => (
                   <div 
@@ -494,6 +516,24 @@ function FashionFinder() {
             
             {/* Chat input */}
             <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-between items-center mb-2">
+                <div className="text-xs text-gray-500">
+                  <i className="fas fa-info-circle mr-1"></i>
+                  Ask about specific clothing items, colors, styles, or occasions
+                </div>
+                
+                {!autoScroll && messages.length > 3 && (
+                  <button 
+                    onClick={handleScrollToBottom}
+                    className="text-xs text-secondary-600 hover:text-secondary-800 flex items-center"
+                    title="Scroll to bottom"
+                  >
+                    <i className="fas fa-arrow-down mr-1"></i>
+                    Scroll to latest
+                  </button>
+                )}
+              </div>
+              
               <form onSubmit={handleSubmit} className="flex items-center space-x-2">
                 <div className="relative flex-1">
                   <input
@@ -534,11 +574,6 @@ function FashionFinder() {
                   {error}
                 </div>
               )}
-              
-              <div className="text-xs text-gray-500 mt-2">
-                <i className="fas fa-info-circle mr-1"></i>
-                Ask about specific clothing items, colors, styles, or occasions
-              </div>
             </div>
           </div>
         </div>
