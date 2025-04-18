@@ -3512,6 +3512,68 @@ async def text2image_page(request: SearchRequest):
             }
         )
 
+@app.post("/api/text-search")
+async def api_text_search(request: SearchRequest):
+    """API endpoint for text-to-image search"""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Process the text2image request
+            result = await process_text2image(client, request.query)
+            
+            # Check if query is clothing-related
+            if not result.get("is_clothing_related", True):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="This query doesn't appear to be about clothing or fashion items. Please try a specific fashion-related query like 'red dress', 'blue denim jacket', or 'black leather boots'."
+                )
+            
+            # If successful and we have image content, return it
+            if result.get("is_successful", False) and "content" in result:
+                return StreamingResponse(io.BytesIO(result["content"]), media_type="image/jpeg")
+            
+            # Otherwise raise an exception
+            error_code = 404 if "No match" in result.get("message", "") else 500
+            
+            if error_code == 404:
+                detail = "No matching fashion items found. Please try a different fashion-related query."
+            else:
+                detail = result.get("message", "An error occurred while processing your request.")
+                
+            raise HTTPException(status_code=error_code, detail=detail)
+            
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error in API text search: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while processing your request."
+        )
+
+@app.post("/api/check-query")
+async def api_check_query(request: SearchRequest):
+    """API endpoint to check if a query is clothing-related"""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Only check if the query is clothing-related
+            response = await client.post(
+                f"{TEXT2IMAGE_SERVICE_URL}/check-query",
+                json={"query": request.query},
+                timeout=float(SERVICE_TIMEOUT)
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            return result
+            
+    except Exception as e:
+        logger.error(f"Error checking query: {e}")
+        return {
+            "is_clothing_related": False,
+            "message": f"Error checking query: {str(e)}"
+        }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=9000, log_level="info")

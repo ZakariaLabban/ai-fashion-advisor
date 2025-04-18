@@ -110,6 +110,7 @@ function Navbar() {
             <Link to="/analyze" className={`${isActive('/analyze')} text-white hover:text-accent-200`}>Analyze</Link>
             <Link to="/virtual-tryon" className={`${isActive('/virtual-tryon')} text-white hover:text-accent-200`}>Fitting Room</Link>
             <Link to="/outfit-matcher" className={`${isActive('/outfit-matcher')} text-white hover:text-accent-200`}>Outfit Matcher</Link>
+            <Link to="/fashion-finder" className={`${isActive('/fashion-finder')} text-white hover:text-accent-200`}>Fashion Finder</Link>
             <Link to="/chatbot" className={`${isActive('/chatbot')} text-white hover:text-accent-200`}>Elegance Bot</Link>
             <button onClick={() => scrollToSection('#about')} className="text-white hover:text-accent-200 nav-link">About</button>
             <button 
@@ -143,6 +144,7 @@ function Navbar() {
           <Link to="/analyze" className="block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">Analyze</Link>
           <Link to="/virtual-tryon" className="block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">Fitting Room</Link>
           <Link to="/outfit-matcher" className="block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">Outfit Matcher</Link>
+          <Link to="/fashion-finder" className="block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">Fashion Finder</Link>
           <Link to="/chatbot" className="block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">Elegance Bot</Link>
           <button onClick={() => scrollToSection('#about')} className="w-full text-left block px-3 py-2 text-base font-medium rounded-md text-white hover:bg-secondary-600 transition duration-300">About</button>
           <button onClick={() => scrollToSection('#contact')} className="w-full text-left block px-3 py-2 text-base font-medium text-white bg-accent-500/30 rounded-md hover:bg-accent-500 transition duration-300">Contact</button>

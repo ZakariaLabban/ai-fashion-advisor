@@ -16,6 +16,16 @@ module.exports = defineConfig({
         changeOrigin: true,
         timeout: 120000 // 2 minutes
       },
+      '/api/text-search': {
+        target: 'http://localhost:7002', // text2image service
+        changeOrigin: true,
+        timeout: 60000 // 1 minute
+      },
+      '/api/check-query': {
+        target: 'http://localhost:7002', // text2image service
+        changeOrigin: true,
+        timeout: 30000 // 30 seconds
+      },
       '/api': {
         target: 'http://localhost:7000',
         changeOrigin: true,
