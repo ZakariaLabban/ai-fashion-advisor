@@ -26,6 +26,7 @@ function Chatbot() {
   const [showSuggestions, setShowSuggestions] = useState(true)
   const [activeSuggestion, setActiveSuggestion] = useState(null)
   const messagesEndRef = useRef(null)
+  const chatContainerRef = useRef(null) // New ref for the chat container
   const inputRef = useRef(null)
 
   const suggestedQuestions = [
@@ -64,20 +65,26 @@ function Chatbot() {
   // Generate a session ID when the component mounts
   useEffect(() => {
     setSessionId(`session_${Date.now()}`)
+    // Scroll to bottom once on initial load
+    setTimeout(() => scrollToBottom(), 100)
   }, [])
 
-  // Scroll to bottom of chat whenever messages change
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+  // No auto-scrolling with messages changes
+  // This useEffect has been removed
 
   // Focus input on load
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
+  // Manual scroll to bottom function
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Function to handle manual scroll to bottom
+  const handleScrollToBottom = () => {
+    scrollToBottom()
   }
 
   const handleSubmit = async (e) => {
@@ -92,6 +99,9 @@ function Chatbot() {
     setLoading(true)
     setError(null)
     setShowSuggestions(false)
+    
+    // Scroll to bottom when user sends a message
+    scrollToBottom()
 
     try {
       const response = await axios.post('/api/elegance/chat', {
@@ -106,6 +116,7 @@ function Chatbot() {
         timestamp: new Date()
       }
       setMessages(prev => [...prev, assistantMessage])
+      // No auto-scroll after adding response
     } catch (error) {
       console.error('Error sending message to Elegance:', error)
       
@@ -119,6 +130,7 @@ function Chatbot() {
         isError: true
       }
       setMessages(prev => [...prev, errorMessage])
+      // No auto-scroll after adding error message
     } finally {
       setLoading(false)
       inputRef.current?.focus()
@@ -143,6 +155,8 @@ function Chatbot() {
     }])
     setShowSuggestions(true)
     setError(null)
+    // Scroll to bottom once after clearing chat
+    setTimeout(() => scrollToBottom(), 100)
   }
 
   return (
@@ -222,13 +236,24 @@ function Chatbot() {
                     <p className="text-xs opacity-75">Fashion AI Assistant</p>
                   </div>
                 </div>
-                <button 
-                  onClick={clearChat}
-                  className="text-white hover:text-gray-200 transition-colors"
-                  title="Clear chat"
-                >
-                  <i className="fas fa-trash-alt"></i>
-                </button>
+                <div className="flex items-center">
+                  {messages.length > 2 && (
+                    <button 
+                      onClick={handleScrollToBottom}
+                      className="text-white/80 hover:text-white mr-4 transition-colors"
+                      title="Scroll to bottom"
+                    >
+                      <i className="fas fa-arrow-down"></i>
+                    </button>
+                  )}
+                  <button 
+                    onClick={clearChat}
+                    className="text-white/80 hover:text-white transition-colors"
+                    title="Clear chat"
+                  >
+                    <i className="fas fa-trash-alt"></i>
+                  </button>
+                </div>
               </div>
 
               {/* Error banner */}
@@ -248,7 +273,10 @@ function Chatbot() {
               )}
 
           {/* Chat messages area */}
-          <div className="h-96 overflow-y-auto p-6 bg-gray-50">
+          <div 
+            ref={chatContainerRef}
+            className="h-96 overflow-y-auto p-6 bg-gray-50"
+          >
             {messages.map((message, index) => (
               <div 
                 key={index}
