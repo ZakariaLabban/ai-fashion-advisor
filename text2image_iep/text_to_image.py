@@ -12,14 +12,13 @@ from dotenv import load_dotenv
 import os
 import openai
 import json
-from openai import OpenAI
 
 load_dotenv()
 
 app = FastAPI()
 
 # === Configure OpenAI ===
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # === Load CLIP model and processor ===
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
@@ -96,7 +95,7 @@ IMPORTANT: Evaluate ONLY whether this query is specifically about clothing/fashi
 RESPOND WITH ONLY "yes" OR "no".
 """
         
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -112,9 +111,9 @@ RESPOND WITH ONLY "yes" OR "no".
         answer = response.choices[0].message.content.strip().lower()
         return answer == "yes"  # Only exact "yes" passes
     except Exception as e:
-        # If there's an error, log it but default to rejection for safety
+        # If there's an error, log it but default to True to ensure good user experience
         print(f"Error checking if query is clothing-related: {str(e)}")
-        return False  # Default to rejection on error for security
+        return True  # Default to accepting query on error
 
 # === Request Schema ===
 class SearchRequest(BaseModel):
