@@ -10,7 +10,7 @@ import torch
 import io
 from dotenv import load_dotenv
 import os
-import openai
+from openai import OpenAI
 import json
 
 load_dotenv()
@@ -18,7 +18,7 @@ load_dotenv()
 app = FastAPI()
 
 # === Configure OpenAI ===
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # === Load CLIP model and processor ===
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
@@ -74,7 +74,7 @@ async def is_clothing_related(query: str) -> bool:
         Answer with only "yes" if the query is clearly about clothing items or fashion, and "no" if it's about something else.
         """
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful fashion assistant that determines if queries are about clothing items."},
@@ -85,11 +85,12 @@ async def is_clothing_related(query: str) -> bool:
         )
         
         answer = response.choices[0].message.content.strip().lower()
+        print(f"Query: '{query}', Is clothing related: '{answer}'")
         return "yes" in answer
     except Exception as e:
-        # If there's an error in the OpenAI service, default to True to avoid blocking legitimate queries
+        # If there's an error in the OpenAI service, we'll be strict and default to False
         print(f"Error checking if query is clothing-related: {str(e)}")
-        return True
+        return False
 
 # === Request Schema ===
 class SearchRequest(BaseModel):
