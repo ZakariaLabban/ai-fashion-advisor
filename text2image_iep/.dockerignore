@@ -1,0 +1,6 @@
+.env
+auradataset-643b5a8d654e.json
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

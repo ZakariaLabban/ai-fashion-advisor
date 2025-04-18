@@ -27,6 +27,7 @@ services:
       - elegance-iep
       - reco-data-iep
       - match-iep
+      - text2image-iep
     environment:
       - DETECTION_SERVICE_URL=http://detection-iep:8001
       - STYLE_SERVICE_URL=http://style-iep:8002
@@ -35,6 +36,7 @@ services:
       - ELEGANCE_SERVICE_URL=http://elegance-iep:8005
       - RECO_DATA_SERVICE_URL=http://reco-data-iep:8007
       - MATCH_SERVICE_URL=http://match-iep:8008
+      - TEXT2IMAGE_SERVICE_URL=http://text2image-iep:8020
       - SERVICE_TIMEOUT=60
 
   # Detection Internal Endpoint Processor
@@ -126,4 +128,16 @@ services:
     volumes:
       - ./match_iep:/app
     environment:
-      - SERVICE_TIMEOUT=30 
+      - SERVICE_TIMEOUT=30
+      
+  # Text to Image Internal Endpoint Processor  
+  text2image-iep:
+    build: ./text2image_iep
+    container_name: text2image-iep
+    ports:
+      - "7020:8020"
+    volumes:
+      - ./text2image_iep:/app
+      - ./text2image_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
+    env_file:
+      - ./text2image_iep/.env 

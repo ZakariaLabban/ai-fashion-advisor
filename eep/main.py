@@ -48,6 +48,7 @@ VIRTUAL_TRYON_SERVICE_URL = os.getenv("VIRTUAL_TRYON_SERVICE_URL", "http://virtu
 ELEGANCE_SERVICE_URL = os.getenv("ELEGANCE_SERVICE_URL", "http://elegance-iep:8005")
 RECO_DATA_SERVICE_URL = os.getenv("RECO_DATA_SERVICE_URL", "http://reco-data-iep:8007")
 MATCH_SERVICE_URL = os.getenv("MATCH_SERVICE_URL", "http://match-iep:8008")
+TEXT2IMAGE_SERVICE_URL = os.getenv("TEXT2IMAGE_SERVICE_URL", "http://text2image-iep:8020")
 
 # Timeout for service requests (in seconds)
 SERVICE_TIMEOUT = int(os.getenv("SERVICE_TIMEOUT", "30"))
@@ -435,6 +436,7 @@ async def home():
             <div class="tab" onclick="showTab('multi-tryon')">Multi-Garment Try-On</div>
             <div class="tab" onclick="showTab('match')">Outfit Matcher</div>
             <div class="tab" onclick="showTab('elegance')">Elegance Advisor</div>
+            <div class="tab" onclick="showTab('text2image')">Fashion Finder</div>
         </div>
 
         <div class="tab-content active" id="analysis-content">
@@ -547,6 +549,90 @@ async def home():
             <div class="signature">~ Elegance, Paris</div>
         </div>
         
+        <div class="tab-content" id="text2image-content">
+            <h2>Fashion Finder - Text to Image Search</h2>
+            <p class="info-text">Describe the clothing item you're looking for, and we'll find matching images for you.</p>
+            <div id="text2image-form-container">
+                <div class="form-group">
+                    <label for="text-query">What are you looking for?</label>
+                    <input type="text" id="text-query" placeholder="e.g., blue floral summer dress, vintage leather jacket, etc." class="file-input">
+                </div>
+                <button id="search-button" type="button">Find Fashion</button>
+            </div>
+            <div id="text2image-result" style="margin-top: 30px; text-align: center; display: none;">
+                <h3>Search Result</h3>
+                <div id="result-image-container" style="margin: 20px auto; max-width: 500px;">
+                    <img id="result-image" style="max-width: 100%; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.1);" alt="Fashion Item">
+                </div>
+                <p id="no-results-message" style="display: none; color: #e74c3c; font-style: italic;">No matching fashion items found. Please try a different search.</p>
+            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const searchButton = document.getElementById('search-button');
+                    const textQuery = document.getElementById('text-query');
+                    const resultContainer = document.getElementById('text2image-result');
+                    const resultImage = document.getElementById('result-image');
+                    const noResultsMessage = document.getElementById('no-results-message');
+                    
+                    searchButton.addEventListener('click', function() {
+                        const query = textQuery.value.trim();
+                        if (!query) {
+                            alert('Please enter a search query');
+                            return;
+                        }
+                        
+                        // Show loading state
+                        searchButton.disabled = true;
+                        searchButton.textContent = 'Searching...';
+                        resultContainer.style.display = 'none';
+                        noResultsMessage.style.display = 'none';
+                        
+                        // Send request to API
+                        fetch('/text2image', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ query: query }),
+                        })
+                        .then(response => {
+                            searchButton.disabled = false;
+                            searchButton.textContent = 'Find Fashion';
+                            
+                            if (!response.ok) {
+                                throw new Error('Search failed');
+                            }
+                            
+                            if (response.headers.get('content-type').includes('image')) {
+                                return response.blob();
+                            } else {
+                                throw new Error('No results found');
+                            }
+                        })
+                        .then(imageBlob => {
+                            // Display the image
+                            resultImage.src = URL.createObjectURL(imageBlob);
+                            resultContainer.style.display = 'block';
+                            noResultsMessage.style.display = 'none';
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            resultContainer.style.display = 'block';
+                            noResultsMessage.style.display = 'block';
+                            resultImage.style.display = 'none';
+                        });
+                    });
+                    
+                    // Also trigger search on Enter key
+                    textQuery.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            searchButton.click();
+                        }
+                    });
+                });
+            </script>
+        </div>
+        
         <footer>
             <p>Fashion Analysis System &copy; 2024 | For more information, visit our <a href="/docs">API Documentation</a></p>
         </footer>
@@ -594,6 +680,7 @@ async def check_services_health():
                 check_iep_health(client, f"{ELEGANCE_SERVICE_URL}/health", "Elegance Chatbot IEP"),
                 check_iep_health(client, f"{RECO_DATA_SERVICE_URL}/health", "Recommendation Data IEP"),
                 check_iep_health(client, f"{MATCH_SERVICE_URL}/health", "Match Analysis IEP"),
+                check_iep_health(client, f"{TEXT2IMAGE_SERVICE_URL}/health", "Text to Image IEP"),
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -605,6 +692,7 @@ async def check_services_health():
                 "elegance": str(results[4] == True),
                 "reco_data": str(results[5] == True),
                 "match": str(results[6] == True),
+                "text2image": str(results[7] == True),
             }
             
             all_healthy = all(s == "True" for s in services_status.values())
@@ -1659,6 +1747,31 @@ async def process_virtual_tryon(
     except Exception as e:
         logger.error(f"Unexpected error in Virtual Try-On processing: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Virtual Try-On processing failed: {str(e)}")
+
+async def process_text2image(client: httpx.AsyncClient, query: str) -> bytes:
+    """Process text-to-image request through the Text2Image IEP"""
+    try:
+        payload = {
+            "query": query
+        }
+        
+        response = await client.post(
+            f"{TEXT2IMAGE_SERVICE_URL}/text-search",
+            json=payload,
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        response.raise_for_status()
+        return response.content
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Text2Image service returned error: {e.response.text}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Text2Image service error: {e.response.text}")
+    except httpx.RequestError as e:
+        logger.error(f"Error connecting to Text2Image service: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Text2Image service unavailable: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error in Text2Image processing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Text2Image processing failed: {str(e)}")
 
 @app.post("/tryon")
 async def tryon_page(
@@ -3205,6 +3318,25 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
     """
     
     return html
+
+class SearchRequest(BaseModel):
+    query: str
+
+@app.post("/text2image")
+async def text2image_page(request: SearchRequest):
+    """Text to Image search page"""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Process the text2image request
+            image_data = await process_text2image(client, request.query)
+            
+            # Return the image directly
+            return StreamingResponse(io.BytesIO(image_data), media_type="image/jpeg")
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error in text2image processing: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing text2image request: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
