@@ -3479,7 +3479,7 @@ async def text2image_page(request: SearchRequest):
                     status_code=400,
                     content={
                         "error": "not_clothing_related",
-                        "message": "Your query does not appear to be about clothing or fashion items. Please try a fashion-related query such as 'red summer dress' or 'blue denim jacket'."
+                        "message": "Your query does not appear to be about clothing or fashion items. Please try a specific fashion-related query such as 'red summer dress', 'blue denim jacket', or 'black leather boots'."
                     }
                 )
             
@@ -3488,7 +3488,7 @@ async def text2image_page(request: SearchRequest):
                 return StreamingResponse(io.BytesIO(result["content"]), media_type="image/jpeg")
             
             # Otherwise return an error
-            error_code = 404 if "No match found" in result.get("message", "") else 500
+            error_code = 404 if "No match" in result.get("message", "") else 500
             
             if error_code == 404:
                 error_message = "No matching fashion items found in our dataset. Please try a different query."
