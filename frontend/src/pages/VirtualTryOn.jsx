@@ -6,6 +6,7 @@ import FashionFacts from '../components/FashionFacts'
 function FashionTryOnTips() {
   const tips = [
     "For best results, use a full-body photo with a neutral background",
+    "Make sure your photo contains only one person (yourself) for the system to work properly",
     "Stand straight facing the camera for the most accurate try-on experience",
     "Wear form-fitting clothes in your model photo for better garment alignment",
     "Make sure the lighting is even and your entire body is visible",
@@ -206,7 +207,23 @@ function VirtualTryOn() {
       setActiveStep(4)
     } catch (err) {
       console.error('Error processing virtual try-on:', err)
-      setError(`Error processing virtual try-on: ${err.message}`)
+      
+      // Handle specific error cases related to person detection
+      if (err.response && err.response.status === 400) {
+        const errorMessage = err.response.data.detail || err.response.data.message || err.message
+        
+        // More user-friendly error messages based on the error content
+        if (errorMessage.includes("social person") || errorMessage.includes("need a picture of you alone")) {
+          setError("We detected multiple people in your photo. For the best try-on experience, please upload a photo with just you in it.")
+        } else if (errorMessage.includes("couldn't detect anyone") || errorMessage.includes("provide a clear photo")) {
+          setError("We couldn't detect a person in your photo. Please upload a clear, full-body photo of yourself.")
+        } else {
+          setError(`${errorMessage}`)
+        }
+      } else {
+        setError(`Error processing virtual try-on: ${err.message}`)
+      }
+      
       setProgressStatus('')
     } finally {
       setLoading(false)
@@ -384,24 +401,33 @@ function VirtualTryOn() {
                       </label>
                         <div className="relative group">
                           {!modelFile ? (
-                            <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-white hover:border-secondary-200 transition-all duration-300 cursor-pointer">
-                              <div className="text-secondary-500 mb-4">
-                                <i className="fas fa-user-circle text-6xl"></i>
+                            <>
+                              <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-white hover:border-secondary-200 transition-all duration-300 cursor-pointer">
+                                <div className="text-secondary-500 mb-4">
+                                  <i className="fas fa-user-circle text-6xl"></i>
+                                </div>
+                                <p className="text-gray-700 font-medium mb-2">Drag and drop your photo here</p>
+                                <p className="text-gray-500 text-sm mb-4">or</p>
+                                <label htmlFor="modelFile" className="px-4 py-2 bg-secondary-500 text-white rounded-lg hover:bg-secondary-600 transition-colors cursor-pointer flex items-center">
+                                  <i className="fas fa-upload mr-2"></i>
+                                  Browse files
+                                </label>
+                                <input
+                                  id="modelFile"
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleModelFileChange}
+                                />
                               </div>
-                              <p className="text-gray-700 font-medium mb-2">Drag and drop your photo here</p>
-                              <p className="text-gray-500 text-sm mb-4">or</p>
-                              <label htmlFor="modelFile" className="px-4 py-2 bg-secondary-500 text-white rounded-lg hover:bg-secondary-600 transition-colors cursor-pointer flex items-center">
-                                <i className="fas fa-upload mr-2"></i>
-                                Browse files
-                              </label>
-                        <input
-                                id="modelFile"
-                          type="file"
-                          onChange={handleModelFileChange}
-                          accept="image/*"
-                                className="hidden"
-                        />
-                        </div>
+                              <div className="mt-4 text-xs text-secondary-600 bg-secondary-50 p-2 rounded-md flex items-start border border-secondary-100">
+                                <i className="fas fa-info-circle mr-2 mt-0.5 text-secondary-500"></i>
+                                <div>
+                                  <p className="font-medium">Important:</p>
+                                  <p>Please upload a photo with only one person (yourself) for the best results. Photos with multiple people or no visible person will be rejected.</p>
+                                </div>
+                              </div>
+                            </>
                           ) : (
                             <div className="relative">
                               <div className="flex justify-between items-center mb-3">
@@ -420,13 +446,12 @@ function VirtualTryOn() {
                                   <i className="fas fa-times mr-1"></i>
                                   Remove
                                 </button>
-                      </div>
-                              <div className="border border-secondary-200 rounded-lg p-2 bg-secondary-50">
-                                <div className="flex items-center text-sm text-gray-500 mb-2">
-                                  <i className="fas fa-file-image text-secondary-400 mr-2"></i>
-                                  <span className="truncate">{modelFile.name}</span>
-                                </div>
                               </div>
+                              <img 
+                                src={modelPreview} 
+                                alt="Selected model" 
+                                className="max-h-80 rounded-lg mx-auto shadow-sm"
+                              />
                             </div>
                           )}
                         </div>
@@ -436,6 +461,10 @@ function VirtualTryOn() {
                             For best results:
                           </p>
                           <ul className="mt-2 space-y-1 text-sm text-gray-500">
+                            <li className="flex items-start">
+                              <i className="fas fa-check-circle text-green-500 mr-2 mt-0.5"></i>
+                              <span>Upload a photo with <strong>only yourself</strong> in the frame</span>
+                            </li>
                             <li className="flex items-start">
                               <i className="fas fa-check-circle text-green-500 mr-2 mt-0.5"></i>
                               Use a photo with a neutral background
@@ -874,16 +903,48 @@ function VirtualTryOn() {
           {error && (
             <div className="mt-6 p-6 bg-red-50 text-red-700 rounded-lg border-l-4 border-red-500 animate-fadeIn">
               <div className="flex items-start">
-                <div className="text-red-500 text-xl mr-4 mt-1">
-                  <i className="fas fa-exclamation-circle"></i>
+                <div className="text-red-500 text-2xl mr-4 mt-1">
+                  {error.includes("multiple people") ? (
+                    <i className="fas fa-users"></i>
+                  ) : error.includes("couldn't detect a person") ? (
+                    <i className="fas fa-user-slash"></i>
+                  ) : (
+                    <i className="fas fa-exclamation-circle"></i>
+                  )}
                 </div>
-                <div>
-                  <p className="font-medium">Something went wrong</p>
-                  <p className="mt-1">{error}</p>
+                <div className="flex-1">
+                  <p className="font-medium text-lg">
+                    {error.includes("multiple people") ? "Multiple People Detected" : 
+                     error.includes("couldn't detect a person") ? "No Person Detected" : 
+                     "Something went wrong"}
+                  </p>
+                  <p className="mt-2 text-red-600">{error}</p>
+                  {(error.includes("multiple people") || error.includes("couldn't detect a person")) && (
+                    <div className="mt-3 p-3 bg-white rounded-md text-gray-700 text-sm border border-red-200">
+                      <p className="font-medium mb-2">Tips for better results:</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {error.includes("multiple people") && (
+                          <>
+                            <li>Use a photo with only yourself in the frame</li>
+                            <li>Crop out other people from your photo before uploading</li>
+                            <li>Take a new selfie in a location where you're alone</li>
+                          </>
+                        )}
+                        {error.includes("couldn't detect a person") && (
+                          <>
+                            <li>Use a well-lit photo that clearly shows your full body</li>
+                            <li>Ensure there's good contrast between you and the background</li>
+                            <li>Make sure your photo is not too small or blurry</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                  )}
                   <button 
                     onClick={() => setError('')}
-                    className="mt-3 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm hover:bg-red-200 transition-colors"
+                    className="mt-4 px-4 py-2 bg-red-100 text-red-700 rounded-md text-sm hover:bg-red-200 transition-colors inline-flex items-center"
                   >
+                    <i className="fas fa-times mr-2"></i>
                     Dismiss
                   </button>
                 </div>
