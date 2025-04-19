@@ -162,7 +162,7 @@ function Analyze() {
     // For testing - force show multiple people warning
     // Uncomment this line to force show the warning
     // setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
-    
+
     const formData = new FormData()
     formData.append('file', file)
 
@@ -1564,7 +1564,7 @@ function Analyze() {
                   <p className="mt-2">{error}</p>
                   
                   <div className="mt-4 flex justify-end">
-                    <button 
+                    <button
                       onClick={() => setError('')}
                       className="px-4 py-2 bg-white text-red-600 rounded-full text-sm hover:bg-red-100 transition-colors flex items-center"
                     >

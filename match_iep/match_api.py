@@ -220,69 +220,84 @@ def evaluate_style_consistency(top_style, bottom_style):
     compatibility_matrix = {
         "casual": {
             "casual": 95,
-            "formal": 30,
-            "sports": 70,
-            "ethnic": 60,
-            "business": 40,
-            "party": 60
+            "formal": 50,       # Increased (was 30)
+            "sports": 80,       # Increased (was 70)
+            "ethnic": 70,       # Increased (was 60)
+            "business": 60,     # Increased (was 40)
+            "party": 75,        # Increased (was 60)
+            "streetwear": 90    # New style
         },
         "formal": {
-            "casual": 30,
+            "casual": 50,       # Increased (was 30)
             "formal": 95,
-            "sports": 10,
-            "ethnic": 50,
-            "business": 85,
-            "party": 70
+            "sports": 30,       # Increased (was 10)
+            "ethnic": 65,       # Increased (was 50)
+            "business": 90,     # Increased (was 85)
+            "party": 80,        # Increased (was 70)
+            "streetwear": 45    # New style
         },
         "sports": {
-            "casual": 70,
-            "formal": 10,
+            "casual": 80,       # Increased (was 70)
+            "formal": 30,       # Increased (was 10)
             "sports": 95,
-            "ethnic": 20,
-            "business": 15,
-            "party": 30
+            "ethnic": 40,       # Increased (was 20)
+            "business": 35,     # Increased (was 15)
+            "party": 50,        # Increased (was 30)
+            "streetwear": 85    # New style
         },
         "ethnic": {
-            "casual": 60,
-            "formal": 50,
-            "sports": 20,
+            "casual": 70,       # Increased (was 60)
+            "formal": 65,       # Increased (was 50)
+            "sports": 40,       # Increased (was 20)
             "ethnic": 95,
-            "business": 45,
-            "party": 75
+            "business": 60,     # Increased (was 45)
+            "party": 85,        # Increased (was 75)
+            "streetwear": 65    # New style
         },
         "business": {
-            "casual": 40,
-            "formal": 85,
-            "sports": 15,
-            "ethnic": 45,
+            "casual": 60,       # Increased (was 40)
+            "formal": 90,       # Increased (was 85)
+            "sports": 35,       # Increased (was 15)
+            "ethnic": 60,       # Increased (was 45)
             "business": 95,
-            "party": 60
+            "party": 70,        # Increased (was 60)
+            "streetwear": 50    # New style
         },
         "party": {
-            "casual": 60,
-            "formal": 70,
-            "sports": 30,
-            "ethnic": 75,
-            "business": 60,
-            "party": 95
+            "casual": 75,       # Increased (was 60)
+            "formal": 80,       # Increased (was 70)
+            "sports": 50,       # Increased (was 30)
+            "ethnic": 85,       # Increased (was 75)
+            "business": 70,     # Increased (was 60)
+            "party": 95,
+            "streetwear": 80    # New style
+        },
+        "streetwear": {         # New style category
+            "casual": 90,
+            "formal": 45,
+            "sports": 85,
+            "ethnic": 65,
+            "business": 50,
+            "party": 80,
+            "streetwear": 95
         }
     }
     
-    # Default score for unknown styles
-    default_score = 50
+    # Default score for unknown styles - more lenient default
+    default_score = 60  # Increased from 50
     
     # Get compatibility score
     score = compatibility_matrix.get(top_style, {}).get(bottom_style, default_score)
     
-    # Generate analysis text
+    # Generate analysis text - more positive language
     if score >= 85:
         analysis = f"Excellent {top_style}-{bottom_style} style matching."
     elif score >= 70:
         analysis = f"Good style consistency between {top_style} top and {bottom_style} bottom."
     elif score >= 50:
-        analysis = f"{top_style.capitalize()} top and {bottom_style} bottom are compatible with careful styling."
+        analysis = f"{top_style.capitalize()} top and {bottom_style} bottom create an interesting style contrast."  # More positive
     else:
-        analysis = f"{top_style.capitalize()} top and {bottom_style} bottom have contrasting styles that may clash."
+        analysis = f"{top_style.capitalize()} top and {bottom_style} bottom have distinctly different styles that create a bold fashion statement."  # Much more positive
     
     return score, analysis
 
@@ -425,26 +440,27 @@ def generate_suggestions(analysis_results):
     
     # Color harmony suggestions (K-means)
     if color_score < 70:
-        suggestions.append("Consider items with more complementary or harmonious dominant colors.")
+        suggestions.append("For even better harmony, explore items with complementary or analogous colors to enhance your look.")
     
-    # Style suggestions
+    # Style suggestions - more positive framing
     if style_score < 70:
-        suggestions.append("Try pieces that are more consistent in style or formality level.")
+        suggestions.append("This unique style mixture creates an interesting contrast - consider adding a transitional accessory to bridge the styles.")
     
-    # Add suggestions based on feature match
+    # Add suggestions based on feature match - more constructive
     if feature_score > 0 and feature_score < 65:
-        suggestions.append("These items have different visual characteristics - consider pieces with more similar textures or patterns.")
+        suggestions.append("These pieces have distinctive visual characteristics - embrace this creative pairing or consider items with similar textures or patterns for a different look.")
     
-    # Add suggestions based on color histogram
+    # Add suggestions based on color histogram - more positive
     if histogram_score > 0 and histogram_score < 65:
-        suggestions.append("The color distributions of these items don't complement each other well - try a different color palette.")
+        suggestions.append("The colors in this outfit create a bold statement - for a different vibe, try pieces with more complementary color palettes.")
     
-    # Generic suggestions that enhance most outfits
+    # Generic suggestions that enhance most outfits - more positive and fashionable
     styling_suggestions = [
-        "Adding a belt would help tie this look together.",
-        "Accessories like a watch or jewelry could elevate this combination.",
-        "Footwear in a neutral tone would complement this outfit well.",
-        "Consider layering with a jacket or cardigan for added dimension."
+        "A statement belt would help tie this look together and add a polished finish.",
+        "Accessories like a watch or layered jewelry could elevate this look and express your personal style.",
+        "Footwear in a complementary tone would complete this outfit beautifully.",
+        "Layering with a jacket or cardigan would add dimension and versatility to this combination.",
+        "A scarf or statement necklace could bring this whole outfit together perfectly."
     ]
     
     # Add 1-2 generic styling suggestions
@@ -987,40 +1003,43 @@ async def match_outfit(
         # STEP 8: Calculate weighted overall match score with redistributed weights
         # New weights giving more importance to color/feature and less to style/occasion
         weights = {
-            "color_harmony": 0.30,      # Increased from 0.20 (dominant colors from K-means)
-            "feature_match": 0.30,      # Increased from 0.20 (feature vectors)
-            "color_histogram": 0.25,    # Increased from 0.15 (detailed color distribution)
-            "style_consistency": 0.10,  # Reduced from 0.20
-            "occasion": 0.05,           # Reduced from 0.15
-            # trend weight (0.10) has been removed and redistributed
+            "color_harmony": 0.30,      # Dominant colors from K-means
+            "feature_match": 0.25,      # Feature vectors (reduced from 0.30)
+            "color_histogram": 0.20,    # Detailed color distribution (reduced from 0.25)
+            "style_consistency": 0.20,  # Style classification (increased from 0.10)
+            "occasion": 0.05,           # Occasion appropriateness
         }
         
         # If feature or histogram scores are not available, redistribute their weights
         if feature_score == 0:
-            redistribution = weights["feature_match"] / 4  # Divide by 4 components now
+            redistribution = weights["feature_match"] / 3  # Divide by 3 components
             weights["feature_match"] = 0
             weights["color_harmony"] += redistribution
-            weights["color_histogram"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
             
         if histogram_score == 0:
-            redistribution = weights["color_histogram"] / 4  # Divide by 4 components now
+            redistribution = weights["color_histogram"] / 3  # Divide by 3 components
             weights["color_histogram"] = 0
             weights["color_harmony"] += redistribution
-            weights["feature_match"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
         
         # Calculate weighted score
-        overall_score = round(
+        weighted_score = (
             weights["color_harmony"] * color_score +
             weights["feature_match"] * feature_score +
             weights["color_histogram"] * histogram_score +
             weights["style_consistency"] * style_score +
             weights["occasion"] * occasion_score
-            # trend score removed
         )
+        
+        # Apply a slight boost to make scores more generous
+        # This adjusts the curve upward a bit, especially for mid-range scores
+        boosted_score = min(100, weighted_score * 1.15)
+        
+        # Round to nearest integer
+        overall_score = round(boosted_score)
         
         # STEP 9: Compile analysis results
         analysis = {
@@ -1197,37 +1216,42 @@ async def compute_match(request: MatchRequest):
         # STEP 2: Calculate weighted overall match score
         weights = {
             "color_harmony": 0.30,      # Dominant colors from K-means
-            "feature_match": 0.30,      # Feature vectors
-            "color_histogram": 0.25,    # Detailed color distribution
-            "style_consistency": 0.10,  # Style classification
+            "feature_match": 0.25,      # Feature vectors (reduced from 0.30)
+            "color_histogram": 0.20,    # Detailed color distribution (reduced from 0.25)
+            "style_consistency": 0.20,  # Style classification (increased from 0.10)
             "occasion": 0.05,           # Occasion appropriateness
         }
         
         # If feature or histogram scores are not available, redistribute their weights
         if feature_score == 0:
-            redistribution = weights["feature_match"] / 4  # Divide by 4 components
+            redistribution = weights["feature_match"] / 3  # Divide by 3 components
             weights["feature_match"] = 0
             weights["color_harmony"] += redistribution
-            weights["color_histogram"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
             
         if histogram_score == 0:
-            redistribution = weights["color_histogram"] / 4  # Divide by 4 components
+            redistribution = weights["color_histogram"] / 3  # Divide by 3 components
             weights["color_histogram"] = 0
             weights["color_harmony"] += redistribution
-            weights["feature_match"] += redistribution
             weights["style_consistency"] += redistribution
             weights["occasion"] += redistribution
         
         # Calculate weighted score
-        overall_score = round(
+        weighted_score = (
             weights["color_harmony"] * color_score +
             weights["feature_match"] * feature_score +
             weights["color_histogram"] * histogram_score +
             weights["style_consistency"] * style_score +
             weights["occasion"] * occasion_score
         )
+        
+        # Apply a slight boost to make scores more generous
+        # This adjusts the curve upward a bit, especially for mid-range scores
+        boosted_score = min(100, weighted_score * 1.15)
+        
+        # Round to nearest integer
+        overall_score = round(boosted_score)
         
         # STEP 3: Compile analysis results
         analysis = {
