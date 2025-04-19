@@ -221,11 +221,11 @@ function VirtualTryOn() {
       
       // Directly handle the known error cases without complex parsing
       if (errorMessage.includes('social person') || errorMessage.includes('need a picture of you alone')) {
-        // Multiple people detected
-        setError("We detected multiple people in your photo. For the best try-on experience, please upload a photo with just you in it.");
+        // Multiple people detected - using a more playful tone
+        setError("We know you're a social butterfly, but our AI is a bit shy! For the best try-on experience, please upload a photo with just you in it. Save those group pics for your social media!");
       } else if (errorMessage.includes("couldn't detect anyone") || errorMessage.includes("provide a clear photo")) {
-        // No person detected
-        setError("We couldn't detect a person in your photo. Please upload a clear, full-body photo of yourself.");
+        // No person detected - using a joke as requested
+        setError("Hmm, are you invisible? We couldn't detect anyone in this photo! Please upload a clear picture where we can actually see you - we promise we're excited to meet you!");
       } else {
         // For all other errors, clean up the message by removing technical prefixes
         let cleanMessage = errorMessage;
