@@ -210,18 +210,50 @@ function OutfitMatcher() {
       
       console.error('Error matching outfit:', err)
       
+      // Extract the error message
+      let errorMessage = '';
+      
       // Handle specific error types
       if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        setError('Request timed out. The server is taking too long to respond. Please try again later.');
+        errorMessage = 'Request timed out. The server is taking too long to respond. Please try again later.';
       } else if (err.response) {
         // The request was made and the server responded with a status code outside of 2xx range
-        setError(err.response.data?.detail || `Server error: ${err.response.status}`);
+        errorMessage = err.response.data?.detail || `Server error: ${err.response.status}`;
       } else if (err.request) {
         // The request was made but no response was received
-        setError('No response received from server. Please check your connection and try again.');
+        errorMessage = 'No response received from server. Please check your connection and try again.';
       } else {
         // Something happened in setting up the request
-        setError(err.message || 'Failed to match outfit. Please try again.');
+        errorMessage = err.message || 'Failed to match outfit. Please try again.';
+      }
+      
+      console.log('Raw error message:', errorMessage);
+      
+      // Process the error message for a more user-friendly display
+      if (errorMessage.includes('multiple people') || errorMessage.includes('detected multiple people')) {
+        // Multiple people detected in one of the clothing images
+        setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.");
+      } else {
+        // For all other errors, clean up the message by removing technical prefixes
+        let cleanMessage = errorMessage;
+        
+        // Remove specific known prefixes
+        const prefixesToRemove = [
+          "Server error: ",
+          "Match analysis failed: ",
+          "400: ",
+          "500: "
+        ];
+        
+        // Remove each prefix if found
+        prefixesToRemove.forEach(prefix => {
+          if (cleanMessage.includes(prefix)) {
+            cleanMessage = cleanMessage.replace(prefix, '');
+          }
+        });
+        
+        // Set the cleaned error message
+        setError(cleanMessage.trim());
       }
     } finally {
       setLoading(false)
@@ -537,16 +569,36 @@ function OutfitMatcher() {
                 {error && (
                   <div className="mt-8 p-6 bg-red-50 text-red-700 rounded-xl border-l-4 border-red-500 animate-fadeIn">
                     <div className="flex items-start">
-                      <div className="text-red-500 text-xl mr-4 mt-1">
-                        <i className="fas fa-exclamation-circle"></i>
+                      <div className="text-red-500 text-2xl mr-4 mt-1">
+                        {error.includes("multiple people") ? (
+                          <i className="fas fa-users"></i>
+                        ) : (
+                          <i className="fas fa-exclamation-circle"></i>
+                        )}
                       </div>
                       <div>
-                        <p className="font-medium">Something went wrong</p>
-                        <p className="mt-1">{error}</p>
+                        <p className="font-medium text-lg">
+                          {error.includes("multiple people") ? "Multiple People Detected" : "Something went wrong"}
+                        </p>
+                        <p className="mt-2">{error}</p>
+                        
+                        {error.includes("multiple people") && (
+                          <div className="mt-3 p-3 bg-white rounded-md text-gray-700 text-sm border border-red-200">
+                            <p className="font-medium mb-2">Tips for better results:</p>
+                            <ul className="list-disc pl-5 space-y-1">
+                              <li>Use photos that show just the clothing item without people</li>
+                              <li>If you need to use a model photo, ensure only one person is visible</li>
+                              <li>Crop your images before uploading to remove extra people</li>
+                              <li>Take a clean product photo against a neutral background</li>
+                            </ul>
+                          </div>
+                        )}
+                        
                         <button 
                           onClick={() => setError('')}
-                          className="mt-3 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm hover:bg-red-200 transition-colors"
+                          className="mt-4 px-4 py-2 bg-red-100 text-red-700 rounded-md text-sm hover:bg-red-200 transition-colors inline-flex items-center"
                         >
+                          <i className="fas fa-times mr-2"></i>
                           Dismiss
                         </button>
                       </div>
