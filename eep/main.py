@@ -1817,106 +1817,93 @@ async def process_virtual_tryon(
     category: str = "auto",
     mode: str = "quality"
 ) -> Dict:
-    """Process virtual try-on request through the Virtual Try-On IEP"""
+    """Process a virtual try-on request with FASHN.AI API."""
     try:
-        payload = {
-            "model_image_data": model_image_data,
-            "garment_image_data": garment_image_data,
+        # Prepare the request data
+        form_data = {
             "category": category,
             "mode": mode
         }
         
+        files = {
+            "model_image": model_image_data,
+            "garment_image": garment_image_data
+        }
+        
+        # Call the FASHN.AI API through our service
+        logger.info(f"Sending tryon request to {VIRTUAL_TRYON_SERVICE_URL}/tryon")
         response = await client.post(
             f"{VIRTUAL_TRYON_SERVICE_URL}/tryon",
-            json=payload,
-            timeout=float(SERVICE_TIMEOUT)
+            data=form_data,
+            files=files
         )
         
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Virtual Try-On service returned error: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Virtual Try-On service error: {e.response.text}")
-    except httpx.RequestError as e:
-        logger.error(f"Error connecting to Virtual Try-On service: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Virtual Try-On service unavailable: {str(e)}")
+        # Process the response
+        if response.status_code != 200:
+            logger.error(f"Virtual try-on failed: {response.text}")
+            return {
+                "success": False,
+                "error": "Virtual try-on service failed to process the request."
+            }
+        
+        # Parse the JSON response
+        result = response.json()
+        return result
+    
     except Exception as e:
-        logger.error(f"Unexpected error in Virtual Try-On processing: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Virtual Try-On processing failed: {str(e)}")
+        logger.error(f"Error in virtual try-on: {e}")
+        return {
+            "success": False,
+            "error": f"Error processing the virtual try-on: {str(e)}"
+        }
 
-async def process_text2image(client: httpx.AsyncClient, query: str) -> Dict:
-    """Process text-to-image request through the Text2Image IEP"""
+async def check_person_count(client: httpx.AsyncClient, image_data: bytes) -> Dict:
+    """
+    Check if the image contains exactly one person using the People Detector IEP.
+    
+    Args:
+        client: The httpx client to use for the request
+        image_data: The image data to check
+        
+    Returns:
+        Dict with success flag, person count, and any error message
+    """
     try:
-        # First, check if the query is clothing-related
-        check_response = await client.post(
-            f"{TEXT2IMAGE_SERVICE_URL}/check-query",
-            json={"query": query},
-            timeout=float(SERVICE_TIMEOUT)
-        )
+        # Prepare the request
+        files = {"file": ("model_image.jpg", image_data, "image/jpeg")}
         
-        check_response.raise_for_status()
-        check_result = check_response.json()
-        
-        # If query is not clothing-related, return an error
-        if not check_result.get("is_clothing_related", True):
-            return {
-                "is_clothing_related": False,
-                "message": check_result.get("message", "Your query doesn't appear to be related to clothing or fashion.")
-            }
-        
-        # If query is clothing-related, proceed with the image search
+        # Call the People Detector IEP
+        logger.info(f"Sending person count request to {PPL_DETECTOR_SERVICE_URL}/count_persons")
         response = await client.post(
-            f"{TEXT2IMAGE_SERVICE_URL}/text-search",
-            json={"query": query},
-            timeout=float(SERVICE_TIMEOUT)
+            f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
+            files=files
         )
         
-        # If the response is an image, return it
-        if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+        # Process the response
+        if response.status_code != 200:
+            logger.error(f"Person detection failed: {response.text}")
             return {
-                "is_clothing_related": True,
-                "is_successful": True,
-                "content": response.content
+                "success": False,
+                "person_count": 0,
+                "error": "Failed to detect people in the image."
             }
-        # If there's an error in the image search process
-        else:
-            error_message = "No matching fashion items found."
-            try:
-                error_detail = response.json().get("detail", error_message)
-            except:
-                error_detail = error_message
-                
-            return {
-                "is_clothing_related": True,
-                "is_successful": False,
-                "message": error_detail
-            }
-            
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Text2Image service returned error: {e.response.text}")
-        try:
-            error_detail = e.response.json().get("detail", "Error searching for fashion items.")
-        except:
-            error_detail = "Error searching for fashion items."
-            
+        
+        # Parse the result
+        result = response.json()
+        person_count = result.get("person_count", 0)
+        
         return {
-            "is_clothing_related": True,
-            "is_successful": False,
-            "message": error_detail
+            "success": True,
+            "person_count": person_count,
+            "error": None
         }
-    except httpx.RequestError as e:
-        logger.error(f"Error connecting to Text2Image service: {str(e)}")
-        return {
-            "is_clothing_related": True,
-            "is_successful": False,
-            "message": "Text2Image service unavailable."
-        }
+    
     except Exception as e:
-        logger.error(f"Unexpected error in Text2Image processing: {str(e)}")
+        logger.error(f"Error in person detection: {e}")
         return {
-            "is_clothing_related": True,
-            "is_successful": False,
-            "message": f"Unexpected error: {str(e)}"
+            "success": False,
+            "person_count": 0,
+            "error": f"Error detecting people in the image: {str(e)}"
         }
 
 @app.post("/tryon")
@@ -1927,100 +1914,145 @@ async def tryon_page(
     category: str = Form("auto"),
     mode: str = Form("quality")
 ):
-    """Handle virtual try-on request from the web UI"""
+    """
+    Render the virtual try-on page with results.
+    
+    Args:
+        request: The HTTP request
+        model_image: The model/person image
+        garment_image: The garment image
+        category: The garment category (auto, top, bottom)
+        mode: The try-on mode (quality, speed)
+    """
     start_time = time.time()
     request_id = str(uuid.uuid4())
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
-        # Read uploaded files
-        model_image_contents = await model_image.read()
-        garment_image_contents = await garment_image.read()
+        # Read the uploaded images
+        model_contents = await model_image.read()
+        garment_contents = await garment_image.read()
         
-        # Save model image
-        model_image_path = await save_uploaded_image(model_image_contents, model_image.filename)
-        model_image_rel_path = os.path.relpath(model_image_path, UPLOAD_FOLDER)
-        model_image_url = f"/static/uploads/{model_image_rel_path}"
-        
-        # Save garment image
-        garment_image_path = await save_uploaded_image(garment_image_contents, garment_image.filename)
-        garment_image_rel_path = os.path.relpath(garment_image_path, UPLOAD_FOLDER)
-        garment_image_url = f"/static/uploads/{garment_image_rel_path}"
-        
-        # Convert images to base64
-        model_image_b64 = base64.b64encode(model_image_contents).decode('utf-8')
-        garment_image_b64 = base64.b64encode(garment_image_contents).decode('utf-8')
-        
-        # Validate mode
-        valid_modes = ["quality", "balanced", "performance"]
-        if mode not in valid_modes:
-            logger.warning(f"Invalid mode '{mode}', defaulting to 'quality'")
-            mode = "quality"
-        
-        # Process virtual try-on request
-        async with httpx.AsyncClient() as client:
-            tryon_result = await process_virtual_tryon(
-                client, 
-                model_image_b64,
-                garment_image_b64,
-                category=category,
-                mode=mode
+        # First, check the person count in the model image
+        async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
+            person_check = await check_person_count(client, model_contents)
+            
+            if not person_check["success"]:
+                error_html = f"""
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Error!</strong>
+                    <span class="block sm:inline">Could not detect people in the image: {person_check["error"]}</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Check if we have exactly one person
+            person_count = person_check["person_count"]
+            
+            if person_count == 0:
+                error_html = f"""
+                <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Hmm, where are you?</strong>
+                    <span class="block sm:inline">We couldn't find anyone in this photo. Please upload a clear photo of yourself.</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon.html", {
+                    "request": request,
+                    "error": error_html
+                })
+                
+            if person_count > 1:
+                error_html = f"""
+                <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Too much awesomeness!</strong>
+                    <span class="block sm:inline">We know you're a social person, but we need a picture of you alone for the best results. We detected {person_count} people in your photo.</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Continue with processing if exactly one person is detected
+            
+            # Save the original images
+            model_img_path = await save_uploaded_image(model_contents, f"{request_id}_model.jpg")
+            garment_img_path = await save_uploaded_image(garment_contents, f"{request_id}_garment.jpg")
+            
+            # Read saved images as base64 for the API request
+            with open(model_img_path, "rb") as f:
+                model_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            with open(garment_img_path, "rb") as f:
+                garment_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            # Process the virtual try-on
+            result = await process_virtual_tryon(
+                client,
+                model_b64,
+                garment_b64,
+                category,
+                mode
             )
-        
-        # Get result image path and data
-        result_image_path = tryon_result["result_image_path"]
-        result_image_data = tryon_result["result_image_data"]
-        
-        # Save result image
-        result_filename = os.path.basename(result_image_path)
-        result_path = os.path.join(RESULTS_FOLDER, result_filename)
-        
-        async with aiofiles.open(result_path, 'wb') as f:
-            await f.write(base64.b64decode(result_image_data))
-        
-        result_url = f"/static/results/{result_filename}"
-        
-        # Calculate processing time
-        processing_time = time.time() - start_time
-        
-        # Generate HTML response
-        html_response = generate_tryon_result_html(
-            request_id=request_id,
-            model_img=model_image_url,
-            garment_img=garment_image_url,
-            result_img=result_url,
-            category=category,
-            mode=mode,
-            processing_time=processing_time,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )
-        
-        return HTMLResponse(content=html_response)
+            
+            if not result.get("success", False):
+                error_message = result.get("error", "Unknown error during virtual try-on")
+                error_html = f"""
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Error!</strong>
+                    <span class="block sm:inline">{error_message}</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Save the result image
+            result_img_data = base64.b64decode(result["image"])
+            result_img_path = f"/static/results/{request_id}_result.jpg"
+            
+            with open(f".{result_img_path}", "wb") as f:
+                f.write(result_img_data)
+            
+            # Measure processing time
+            processing_time = time.time() - start_time
+            
+            # Generate result HTML
+            result_html = generate_tryon_result_html(
+                request_id, 
+                model_img_path.replace(".", ""), 
+                garment_img_path.replace(".", ""), 
+                result_img_path,
+                category,
+                mode,
+                processing_time,
+                timestamp
+            )
+            
+            return templates.TemplateResponse("tryon.html", {
+                "request": request,
+                "result": result_html
+            })
     
     except Exception as e:
-        logger.error(f"Error processing virtual try-on: {str(e)}")
-        return HTMLResponse(
-            content=f"""
-            <html>
-                <head>
-                    <title>Error</title>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                        .error {{ color: red; background: #ffeeee; padding: 20px; border-radius: 5px; }}
-                        a {{ display: inline-block; margin-top: 20px; }}
-                    </style>
-                </head>
-                <body>
-                    <h1>Virtual Try-On Error</h1>
-                    <div class="error">
-                        <p>Failed to process your request:</p>
-                        <p>{str(e)}</p>
-                    </div>
-                    <a href="/">Back to Home</a>
-                </body>
-            </html>
-            """,
-            status_code=500
-        )
+        logger.error(f"Error processing virtual try-on: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        error_html = f"""
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline">An error occurred during processing: {str(e)}</span>
+        </div>
+        """
+        return templates.TemplateResponse("tryon.html", {
+            "request": request,
+            "error": error_html
+        })
 
 @app.post("/api/tryon")
 async def api_tryon(
@@ -2029,70 +2061,107 @@ async def api_tryon(
     category: str = Form("auto"),
     mode: str = Form("quality")
 ):
-    """API endpoint for virtual try-on"""
+    """
+    API endpoint for virtual try-on.
+    
+    Args:
+        model_image: The model/person image
+        garment_image: The garment image
+        category: The garment category (auto, top, bottom)
+        mode: The try-on mode (quality, speed)
+    """
+    start_time = time.time()
+    request_id = str(uuid.uuid4())
+    
     try:
-        request_id = str(uuid.uuid4())
-        start_time = time.time()
+        # Read the uploaded images
+        model_contents = await model_image.read()
+        garment_contents = await garment_image.read()
         
-        # Read uploaded files
-        model_image_contents = await model_image.read()
-        garment_image_contents = await garment_image.read()
-        
-        # Save model image
-        model_image_path = await save_uploaded_image(model_image_contents, model_image.filename)
-        model_image_rel_path = os.path.relpath(model_image_path, UPLOAD_FOLDER)
-        model_image_url = f"/static/uploads/{model_image_rel_path}"
-        
-        # Save garment image
-        garment_image_path = await save_uploaded_image(garment_image_contents, garment_image.filename)
-        garment_image_rel_path = os.path.relpath(garment_image_path, UPLOAD_FOLDER)
-        garment_image_url = f"/static/uploads/{garment_image_rel_path}"
-        
-        # Convert images to base64
-        model_image_b64 = base64.b64encode(model_image_contents).decode('utf-8')
-        garment_image_b64 = base64.b64encode(garment_image_contents).decode('utf-8')
-        
-        # Process virtual try-on request
-        async with httpx.AsyncClient() as client:
-            tryon_result = await process_virtual_tryon(
-                client, 
-                model_image_b64,
-                garment_image_b64,
-                category=category,
-                mode=mode
+        # First, check the person count in the model image
+        async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
+            person_check = await check_person_count(client, model_contents)
+            
+            if not person_check["success"]:
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "success": False,
+                        "error": f"Could not detect people in the image: {person_check['error']}"
+                    }
+                )
+            
+            # Check if we have exactly one person
+            person_count = person_check["person_count"]
+            
+            if person_count == 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "No person detected in the image. Please upload a clear photo with one person."
+                    }
+                )
+                
+            if person_count > 1:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": f"Too many people detected in the image. We need a picture with exactly one person, but found {person_count}."
+                    }
+                )
+            
+            # Continue with processing if exactly one person is detected
+            
+            # Save the original images for logging
+            model_img_path = await save_uploaded_image(model_contents, f"{request_id}_model.jpg")
+            garment_img_path = await save_uploaded_image(garment_contents, f"{request_id}_garment.jpg")
+            
+            # Read saved images as base64 for the API request
+            with open(model_img_path, "rb") as f:
+                model_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            with open(garment_img_path, "rb") as f:
+                garment_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            # Process the virtual try-on
+            result = await process_virtual_tryon(
+                client,
+                model_b64,
+                garment_b64,
+                category,
+                mode
             )
-        
-        # Get result image path and data
-        result_image_path = tryon_result["result_image_path"]
-        result_image_data = tryon_result["result_image_data"]
-        
-        # Save result image
-        result_filename = os.path.basename(result_image_path)
-        result_path = os.path.join(RESULTS_FOLDER, result_filename)
-        
-        async with aiofiles.open(result_path, 'wb') as f:
-            await f.write(base64.b64decode(result_image_data))
-        
-        result_url = f"/static/results/{result_filename}"
-        
-        # Calculate processing time
-        processing_time = time.time() - start_time
-        
-        # Return response
-        return {
-            "request_id": request_id,
-            "model_image": model_image_url,
-            "garment_image": garment_image_url,
-            "result_image": result_url,
-            "category": category,
-            "processing_time": processing_time,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "details": tryon_result["details"] if "details" in tryon_result else {}
-        }
+            
+            if not result.get("success", False):
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "success": False,
+                        "error": result.get("error", "Unknown error during virtual try-on")
+                    }
+                )
+            
+            # Include processing time in the result
+            processing_time = time.time() - start_time
+            result["processing_time"] = processing_time
+            result["request_id"] = request_id
+            
+            return JSONResponse(content=result)
     
     except Exception as e:
-        logger.error(f"API virtual try-on error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Virtual try-on processing failed: {str(e)}")
+        logger.error(f"Error processing virtual try-on API request: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": f"An error occurred during processing: {str(e)}"
+            }
+        )
 
 def generate_tryon_result_html(request_id, model_img, garment_img, result_img, category, mode, processing_time, timestamp):
     """Generate HTML for displaying virtual try-on results"""
@@ -2261,139 +2330,174 @@ async def multi_tryon_page(
     bottom_image: Optional[UploadFile] = None,
     mode: str = Form("quality")
 ):
-    """Handle multi-garment virtual try-on request from the web UI"""
+    """
+    Render the multi-garment virtual try-on page with results.
+    
+    Args:
+        request: The HTTP request
+        model_image: The model/person image
+        top_image: Optional top garment image
+        bottom_image: Optional bottom garment image
+        mode: The try-on mode (quality, speed)
+    """
     start_time = time.time()
     request_id = str(uuid.uuid4())
-    
-    # Validate that at least one garment is provided
-    if top_image is None and bottom_image is None:
-        return HTMLResponse(
-            content="""
-            <html>
-                <head>
-                    <title>Error</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 40px; }
-                        .error { color: red; background: #ffeeee; padding: 20px; border-radius: 5px; }
-                        a { display: inline-block; margin-top: 20px; color: #3498db; }
-                    </style>
-                </head>
-                <body>
-                    <h1>Multi-Garment Try-On Error</h1>
-                    <div class="error">
-                        <p>At least one garment (top or bottom) must be provided.</p>
-                    </div>
-                    <a href="/">Back to Home</a>
-                </body>
-            </html>
-            """,
-            status_code=400
-        )
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
-        # Read uploaded model image
-        model_image_contents = await model_image.read()
+        # At least one garment must be provided
+        if top_image is None and bottom_image is None:
+            error_html = """
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                <strong class="font-bold">Error!</strong>
+                <span class="block sm:inline">You must provide at least one garment image (top or bottom).</span>
+            </div>
+            """
+            return templates.TemplateResponse("tryon_multi.html", {
+                "request": request,
+                "error": error_html
+            })
         
-        # Save model image
-        model_image_path = await save_uploaded_image(model_image_contents, model_image.filename)
-        model_image_rel_path = os.path.relpath(model_image_path, UPLOAD_FOLDER)
-        model_image_url = f"/static/uploads/{model_image_rel_path}"
+        # Read the uploaded model image
+        model_contents = await model_image.read()
         
-        # Convert model image to base64
-        model_image_b64 = base64.b64encode(model_image_contents).decode('utf-8')
+        # First, check the person count in the model image
+        async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
+            person_check = await check_person_count(client, model_contents)
+            
+            if not person_check["success"]:
+                error_html = f"""
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Error!</strong>
+                    <span class="block sm:inline">Could not detect people in the image: {person_check["error"]}</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon_multi.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Check if we have exactly one person
+            person_count = person_check["person_count"]
+            
+            if person_count == 0:
+                error_html = f"""
+                <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Hmm, where are you?</strong>
+                    <span class="block sm:inline">We couldn't find anyone in this photo. Please upload a clear photo of yourself.</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon_multi.html", {
+                    "request": request,
+                    "error": error_html
+                })
+                
+            if person_count > 1:
+                error_html = f"""
+                <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Too much awesomeness!</strong>
+                    <span class="block sm:inline">We know you're a social person, but we need a picture of you alone for the best results. We detected {person_count} people in your photo.</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon_multi.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Continue with processing if exactly one person is detected
         
-        # Process top image if provided
-        top_image_b64 = None
-        top_image_url = None
-        if top_image:
-            top_image_contents = await top_image.read()
-            top_image_path = await save_uploaded_image(top_image_contents, top_image.filename)
-            top_image_rel_path = os.path.relpath(top_image_path, UPLOAD_FOLDER)
-            top_image_url = f"/static/uploads/{top_image_rel_path}"
-            top_image_b64 = base64.b64encode(top_image_contents).decode('utf-8')
-        
-        # Process bottom image if provided
-        bottom_image_b64 = None
-        bottom_image_url = None
-        if bottom_image:
-            bottom_image_contents = await bottom_image.read()
-            bottom_image_path = await save_uploaded_image(bottom_image_contents, bottom_image.filename)
-            bottom_image_rel_path = os.path.relpath(bottom_image_path, UPLOAD_FOLDER)
-            bottom_image_url = f"/static/uploads/{bottom_image_rel_path}"
-            bottom_image_b64 = base64.b64encode(bottom_image_contents).decode('utf-8')
-        
-        # Validate mode
-        valid_modes = ["quality", "balanced", "performance"]
-        if mode not in valid_modes:
-            logger.warning(f"Invalid mode '{mode}', defaulting to 'quality'")
-            mode = "quality"
-        
-        # Process multi-garment try-on request
-        async with httpx.AsyncClient() as client:
-            tryon_result = await process_multi_garment_tryon(
-                client, 
-                model_image_b64,
-                top_image_b64,
-                bottom_image_b64,
-                mode=mode
+            # Save the model image
+            model_img_path = await save_uploaded_image(model_contents, f"{request_id}_model.jpg")
+            
+            # Process top and bottom garments if provided
+            top_img_path = None
+            top_b64 = None
+            
+            if top_image:
+                top_contents = await top_image.read()
+                top_img_path = await save_uploaded_image(top_contents, f"{request_id}_top.jpg")
+                
+                with open(top_img_path, "rb") as f:
+                    top_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            bottom_img_path = None
+            bottom_b64 = None
+            
+            if bottom_image:
+                bottom_contents = await bottom_image.read()
+                bottom_img_path = await save_uploaded_image(bottom_contents, f"{request_id}_bottom.jpg")
+                
+                with open(bottom_img_path, "rb") as f:
+                    bottom_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            # Read model image as base64
+            with open(model_img_path, "rb") as f:
+                model_b64 = base64.b64encode(f.read()).decode("utf-8")
+            
+            # Process the multi-garment virtual try-on
+            result = await process_multi_garment_tryon(
+                client,
+                model_b64,
+                top_b64,
+                bottom_b64,
+                mode
             )
-        
-        # Get final result image path and data
-        final_result_path = tryon_result["final_result_path"]
-        final_result_data = tryon_result["final_result_data"]
-        
-        # Save result image
-        result_filename = os.path.basename(final_result_path)
-        result_path = os.path.join(RESULTS_FOLDER, result_filename)
-        
-        async with aiofiles.open(result_path, 'wb') as f:
-            await f.write(base64.b64decode(final_result_data))
-        
-        result_url = f"/static/results/{result_filename}"
-        
-        # Calculate processing time
-        processing_time = time.time() - start_time
-        
-        # Generate HTML response
-        html_response = generate_multi_tryon_result_html(
-            request_id=request_id,
-            model_img=model_image_url,
-            top_img=top_image_url,
-            bottom_img=bottom_image_url,
-            result_img=result_url,
-            mode=mode,
-            processing_time=processing_time,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )
-        
-        return HTMLResponse(content=html_response)
+            
+            if not result.get("success", False):
+                error_message = result.get("error", "Unknown error during virtual try-on")
+                error_html = f"""
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Error!</strong>
+                    <span class="block sm:inline">{error_message}</span>
+                </div>
+                """
+                return templates.TemplateResponse("tryon_multi.html", {
+                    "request": request,
+                    "error": error_html
+                })
+            
+            # Save the result image
+            result_img_data = base64.b64decode(result["image"])
+            result_img_path = f"/static/results/{request_id}_result.jpg"
+            
+            with open(f".{result_img_path}", "wb") as f:
+                f.write(result_img_data)
+            
+            # Measure processing time
+            processing_time = time.time() - start_time
+            
+            # Generate result HTML
+            result_html = generate_multi_tryon_result_html(
+                request_id, 
+                model_img_path.replace(".", ""), 
+                top_img_path.replace(".", "") if top_img_path else None, 
+                bottom_img_path.replace(".", "") if bottom_img_path else None,
+                result_img_path,
+                mode,
+                processing_time,
+                timestamp
+            )
+            
+            return templates.TemplateResponse("tryon_multi.html", {
+                "request": request,
+                "result": result_html
+            })
     
     except Exception as e:
-        logger.error(f"Error processing multi-garment try-on: {str(e)}")
+        logger.error(f"Error processing multi-garment virtual try-on: {e}")
+        import traceback
         logger.error(traceback.format_exc())
-        return HTMLResponse(
-            content=f"""
-            <html>
-                <head>
-                    <title>Error</title>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                        .error {{ color: red; background: #ffeeee; padding: 20px; border-radius: 5px; }}
-                        a {{ display: inline-block; margin-top: 20px; }}
-                    </style>
-                </head>
-                <body>
-                    <h1>Multi-Garment Try-On Error</h1>
-                    <div class="error">
-                        <p>Failed to process your request:</p>
-                        <p>{str(e)}</p>
-                    </div>
-                    <a href="/">Back to Home</a>
-                </body>
-            </html>
-            """,
-            status_code=500
-        )
+        
+        error_html = f"""
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline">An error occurred during processing: {str(e)}</span>
+        </div>
+        """
+        return templates.TemplateResponse("tryon_multi.html", {
+            "request": request,
+            "error": error_html
+        })
 
 def generate_multi_tryon_result_html(request_id, model_img, top_img, bottom_img, result_img, mode, processing_time, timestamp):
     """Generate HTML for displaying multi-garment try-on results"""
@@ -3670,6 +3774,81 @@ async def count_people(
     except Exception as e:
         logger.error(f"Error in people counting: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+async def process_text2image(client: httpx.AsyncClient, query: str) -> Dict:
+    """Process text-to-image request through the Text2Image IEP"""
+    try:
+        # First, check if the query is clothing-related
+        check_response = await client.post(
+            f"{TEXT2IMAGE_SERVICE_URL}/check-query",
+            json={"query": query},
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        check_response.raise_for_status()
+        check_result = check_response.json()
+        
+        # If query is not clothing-related, return an error
+        if not check_result.get("is_clothing_related", True):
+            return {
+                "is_clothing_related": False,
+                "message": check_result.get("message", "Your query doesn't appear to be related to clothing or fashion.")
+            }
+        
+        # If query is clothing-related, proceed with the image search
+        response = await client.post(
+            f"{TEXT2IMAGE_SERVICE_URL}/text-search",
+            json={"query": query},
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        # If the response is an image, return it
+        if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+            return {
+                "is_clothing_related": True,
+                "is_successful": True,
+                "content": response.content
+            }
+        # If there's an error in the image search process
+        else:
+            error_message = "No matching fashion items found."
+            try:
+                error_detail = response.json().get("detail", error_message)
+            except:
+                error_detail = error_message
+                
+            return {
+                "is_clothing_related": True,
+                "is_successful": False,
+                "message": error_detail
+            }
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Text2Image service returned error: {e.response.text}")
+        try:
+            error_detail = e.response.json().get("detail", "Error searching for fashion items.")
+        except:
+            error_detail = "Error searching for fashion items."
+        
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": error_detail
+        }
+    except httpx.RequestError as e:
+        logger.error(f"Error connecting to Text2Image service: {str(e)}")
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": "Text2Image service unavailable."
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in Text2Image processing: {str(e)}")
+        return {
+            "is_clothing_related": True,
+            "is_successful": False,
+            "message": f"Unexpected error: {str(e)}"
+        }
 
 if __name__ == "__main__":
     import uvicorn
