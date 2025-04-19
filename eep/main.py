@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple
 import httpx
 from PIL import Image
 import aiofiles
@@ -88,6 +88,7 @@ class AnalysisResponse(BaseModel):
     styles: List[StyleInfo]
     processing_time: float
     timestamp: str
+    people_warning: Optional[str] = None
 
 class RecommendationRequest(BaseModel):
     request_id: str
@@ -1049,6 +1050,45 @@ async def save_crop_image(crop_data_b64: str, class_name: str, item_index: int, 
         logger.error(f"Error saving crop image: {e}")
         return None
 
+async def check_people_in_image(client: httpx.AsyncClient, image_contents: bytes, filename: str) -> tuple[int, Optional[str]]:
+    """
+    Checks how many people are in an image and returns a warning message if there are multiple.
+    
+    Args:
+        client: HTTP client
+        image_contents: Image file contents
+        filename: Name of the image file
+    
+    Returns:
+        Tuple of (person_count, warning_message) where warning_message is None if no warning needed
+    """
+    try:
+        files = {"file": (filename, image_contents, "image/jpeg")}
+        
+        response = await client.post(
+            f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
+            files=files,
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"People counting failed for {filename}: {response.text}")
+            return (0, None)  # Return 0 if service fails, no warning
+        
+        result = response.json()
+        person_count = result.get("person_count", 0)
+        
+        # Generate warning message if more than one person
+        warning_message = None
+        if person_count > 1:
+            warning_message = "We've detected multiple people in your image. Our fashion analysis services perform best with images containing a single person. The analysis will continue, but for optimal results, consider using images with just one person."
+        
+        return (person_count, warning_message)
+    
+    except Exception as e:
+        logger.error(f"Error counting people in image {filename}: {e}")
+        return (0, None)  # On error, assume no people and don't show warning
+
 @app.post("/analyze")
 async def analyze_image(request: Request, file: UploadFile = File(...)):
     """
@@ -1064,6 +1104,7 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
     logger.info(f"[{request_id}] Starting analysis for file: {file.filename}")
     
     start_time = time.time()
+    people_warning = None
     
     try:
         # Read uploaded file
@@ -1074,6 +1115,12 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         relative_image_path = f"/static/uploads/{os.path.basename(image_path)}"
         
         async with httpx.AsyncClient() as client:
+            # Check for multiple people in the image
+            person_count, warning = await check_people_in_image(client, contents, file.filename)
+            if warning:
+                people_warning = warning
+                logger.info(f"[{request_id}] Multiple people detected in image: {person_count} people")
+            
             # 1. Call detection IEP
             try:
                 detections_raw = await process_detection(client, contents, request_id)
@@ -1163,7 +1210,8 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                 "detections": [d.dict() for d in detections],
                 "styles": [s.dict() for s in styles],
                 "processing_time": processing_time,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "people_warning": people_warning
             }
             analysis_results_store[request_id] = analysis_data
             
@@ -1180,8 +1228,13 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                     timestamp=datetime.now().isoformat()
                 )
                 
+                # Add warning about multiple people if applicable
+                response_dict = response.dict()
+                if people_warning:
+                    response_dict["people_warning"] = people_warning
+                
                 # Return as a regular dict
-                return response
+                return response_dict
             
             # For web form submissions, generate HTML directly
             html_content = generate_result_html(
@@ -1191,7 +1244,8 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                 detections=detections,
                 styles=styles,
                 processing_time=processing_time,
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
+                people_warning=people_warning
             )
             
             return HTMLResponse(content=html_content)
@@ -1245,35 +1299,70 @@ async def api_analyze_image(file: UploadFile = File(...)):
     logger.info(f"[{request_id}] API Analyze: Starting analysis for file: {file.filename}")
     
     try:
+        # Read uploaded file
+        contents = await file.read()
+        
+        # Check for multiple people in the image
+        people_warning = None
+        async with httpx.AsyncClient() as client:
+            person_count, warning = await check_people_in_image(client, contents, file.filename)
+            if warning:
+                people_warning = warning
+                logger.info(f"[{request_id}] Multiple people detected in image: {person_count} people")
+        
         # Create a fake request with JSON content type
         fake_headers = [("content-type", "application/json")]
-        fake_request = Request(scope={"type": "http", "headers": fake_headers})
+        fake_request = Request(
+            scope={
+                "type": "http",
+                "headers": fake_headers
+            }
+        )
         
-        # Call the main analyze_image function which will already return a proper response
-        result = await analyze_image(fake_request, file)
+        # We need to recreate the UploadFile with the contents
+        new_file = UploadFile(
+            filename=file.filename,
+            file=io.BytesIO(contents),
+            content_type=file.content_type
+        )
         
-        # Return the result directly - it's already a proper response object
+        # Call the analyze_image function directly with JSON content-type
+        result = await analyze_image(fake_request, new_file)
+        
+        # Add warning about multiple people if applicable
+        if isinstance(result, dict) and people_warning:
+            result["people_warning"] = people_warning
+        
         return result
-        
     except Exception as e:
-        # Log any unexpected errors
-        logger.exception(f"[{request_id}] Unhandled error in api_analyze_image: {str(e)}")
+        logger.error(f"[{request_id}] API Analysis error: {e}")
+        logger.error(traceback.format_exc())
         
-        # Return a clean JSON error response
         return JSONResponse(
             status_code=500,
             content={
-                "error": "API processing error", 
-                "detail": str(e),
-                "request_id": request_id
+                "error": "API Analysis error",
+                "detail": str(e)
             }
         )
 
-def generate_result_html(request_id, original_img, annotated_img, detections, styles, processing_time, timestamp):
+def generate_result_html(request_id, original_img, annotated_img, detections, styles, processing_time, timestamp, people_warning=None):
     """Generate HTML for displaying analysis results"""
     
     # Define clothing types that can be used for recommendations
     reco_capable_classes = ["Shirt", "Jumpsuit", "Pants", "Shorts", "Pants/Shorts", "Skirt", "Dress"]
+    
+    # Create HTML for people warning if applicable
+    people_warning_html = ""
+    if people_warning:
+        people_warning_html = f'''
+        <div class="warning-box">
+            <div class="warning-icon"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="warning-message">
+                <p>{people_warning}</p>
+            </div>
+        </div>
+        '''
     
     styles_html = ""
     for style in styles:
@@ -1386,10 +1475,11 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
     <html>
     <head>
         <title>Fashion Analysis Results</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
         <style>
             body {{ 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                max-width: 1000px; 
+                max-width: 1200px; 
                 margin: 0 auto; 
                 padding: 20px;
                 background-color: #f9f9f9;
@@ -1399,17 +1489,9 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                 padding: 20px;
             }}
             .header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 30px;
-            }}
-            h1, h2, h3 {{ 
-                color: #2c3e50;
-            }}
-            h1 {{ 
                 text-align: center;
                 margin-bottom: 30px;
+                position: relative;
             }}
             .back-btn {{
                 display: inline-block;
@@ -1420,10 +1502,35 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                 border-radius: 5px;
                 font-weight: 500;
                 transition: all 0.3s ease;
+                position: absolute;
+                top: 10px;
+                left: 10px;
             }}
             .back-btn:hover {{
                 background-color: #2980b9;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }}
+            .warning-box {{
+                background-color: #fff3cd;
+                color: #856404;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px auto;
+                max-width: 800px;
+                display: flex;
+                align-items: flex-start;
+                border-left: 5px solid #ffeeba;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            }}
+            .warning-icon {{
+                font-size: 24px;
+                margin-right: 15px;
+                color: #e0a800;
+            }}
+            .warning-message {{
+                flex: 1;
+                font-size: 14px;
+                line-height: 1.5;
             }}
             .images-container {{
                 display: flex;
@@ -1446,11 +1553,9 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
             }}
             .image-box img {{
                 max-width: 100%;
-                max-height: 500px;
+                max-height: 400px;
                 object-fit: contain;
                 border-radius: 5px;
-                display: block;
-                margin: 0 auto;
             }}
             .styles-container {{
                 background-color: white;
@@ -1743,8 +1848,8 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
                 }}
                 
                 // Update visual indicators
-                const similarBtn = document.getElementById(`similar-btn-${{id}}`);
-                const matchingBtn = document.getElementById(`matching-btn-${{id}}`);
+                const similarBtn = document.getElementById(`similar-tab-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-tab-${{id}}`);
                 
                 if (isMatching) {{
                     similarBtn.classList.remove('active');
@@ -1773,9 +1878,11 @@ def generate_result_html(request_id, original_img, annotated_img, detections, st
     <body>
         <div class="container">
             <div class="header">
+                <a href="/" class="back-btn">Back to Home</a>
                 <h1>Fashion Analysis Results</h1>
-                <a href="/" class="back-btn">Back to Upload</a>
             </div>
+            
+            {people_warning_html}
             
             <div class="images-container">
                 <div class="image-box">
@@ -3600,6 +3707,106 @@ def generate_match_result_html(topwear_img, bottomwear_img, match_result, proces
                 line-height: 1.5;
             }}
         </style>
+        <script>
+            function toggleFeatures(id) {{
+                const el = document.getElementById(id);
+                if (el.style.maxHeight === '100px' || el.style.maxHeight === '') {{
+                    el.style.maxHeight = 'none';
+                }} else {{
+                    el.style.maxHeight = '100px';
+                }}
+            }}
+            
+            function showRecoOptions(id, className, itemType, isMatching = false) {{
+                // Show the modal
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'block';
+                
+                // Update the title
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+                
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    // Make sure item_type is set correctly for similarity
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType;
+                }}
+                
+                // Add visual indicators for mode
+                const similarBtn = document.getElementById(`similar-btn-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-btn-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update form attributes based on operation
+                const form = document.getElementById(`reco-form-${{id}}`);
+                form.reset(); // Reset any previous selections
+            }}
+            
+            function closeRecoModal(id) {{
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'none';
+            }}
+            
+            function switchOperation(id, isMatching) {{
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // Get the item type
+                const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                const currentType = itemTypeField.getAttribute('data-original-type');
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    itemTypeField.value = currentType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    itemTypeField.value = currentType;
+                }}
+                
+                // Update visual indicators
+                const similarBtn = document.getElementById(`similar-tab-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-tab-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update the title
+                const className = document.getElementById(`item-class-${{id}}`).value;
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+            }}
+            
+            // Close modal when clicking outside content
+            window.onclick = function(event) {{
+                if (event.target.className === 'reco-modal') {{
+                    event.target.style.display = 'none';
+                }}
+            }}
+        </script>
     </head>
     <body>
         <div class="container">
