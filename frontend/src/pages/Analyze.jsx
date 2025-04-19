@@ -161,7 +161,7 @@ function Analyze() {
 
     // For testing - force show multiple people warning
     // Uncomment this line to force show the warning
-    setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+    // setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
     
     const formData = new FormData()
     formData.append('file', file)
@@ -182,8 +182,17 @@ function Analyze() {
       if (typeof response.data === 'string' && 
           (response.data.includes('detected multiple people') || 
            response.data.includes('multiple people detected') ||
-           response.data.includes('Multiple people'))) {
-        setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+           response.data.includes('Multiple people detected') ||
+           response.data.includes('We\'ve detected multiple people') ||
+           response.data.toLowerCase().includes('multiple people in'))) {
+        
+        // Make sure it's not a false positive by checking for specific phrases
+        if (!response.data.includes('for multiple people detection') && 
+            !response.data.includes('handle multiple people')) {
+          
+          console.log('Multiple people warning detected in response');
+          setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.");
+        }
       }
       
       if (response.data) {
@@ -195,12 +204,20 @@ function Analyze() {
           
           // Check if more than one person was detected in the detections
           if (jsonData.detections) {
-            const personClasses = jsonData.detections
-              .filter(d => d.class_name === 'Person' || d.class_name.includes('person') || d.class_name.includes('Person'))
-              .length;
+            // Only count actual people, not clothing items
+            const personDetections = jsonData.detections
+              .filter(d => (
+                d.class_name === 'Person' || 
+                d.class_name === 'person' || 
+                d.class_name === 'Face' || 
+                (typeof d.class_name === 'string' && 
+                 (d.class_name.toLowerCase() === 'person' || 
+                  d.class_name.toLowerCase().includes(' person')))
+              ));
             
-            if (personClasses > 1) {
-              setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+            if (personDetections.length > 1) {
+              console.log(`Multiple people detected: ${personDetections.length} people`, personDetections);
+              setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.");
             }
           }
 
@@ -334,12 +351,20 @@ function Analyze() {
             
             // Check if more than one person was detected in the detections
             if (extractedResults.detections) {
-              const personClasses = extractedResults.detections
-                .filter(d => d.class_name === 'Person' || d.class_name.includes('person') || d.class_name.includes('Person'))
-                .length;
+              // Only count actual people, not clothing items
+              const personDetections = extractedResults.detections
+                .filter(d => (
+                  d.class_name === 'Person' || 
+                  d.class_name === 'person' || 
+                  d.class_name === 'Face' || 
+                  (typeof d.class_name === 'string' && 
+                   (d.class_name.toLowerCase() === 'person' || 
+                    d.class_name.toLowerCase().includes(' person')))
+                ));
               
-              if (personClasses > 1) {
-                setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+              if (personDetections.length > 1) {
+                console.log(`Multiple people detected: ${personDetections.length} people`, personDetections);
+                setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.");
               }
             }
             
@@ -352,8 +377,17 @@ function Analyze() {
             // Also check for multiple people warning directly in the HTML
             if (response.data.includes('detected multiple people') || 
                 response.data.includes('multiple people detected') ||
-                response.data.includes('Multiple people')) {
-              setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+                response.data.includes('Multiple people detected') ||
+                response.data.includes('We\'ve detected multiple people') ||
+                response.data.toLowerCase().includes('multiple people in')) {
+              
+              // Make sure it's not a false positive by checking for specific phrases
+              if (!response.data.includes('for multiple people detection') && 
+                  !response.data.includes('handle multiple people')) {
+                
+                console.log('Multiple people warning detected in HTML response');
+                setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.");
+              }
             }
             
             setActiveTab('results')
