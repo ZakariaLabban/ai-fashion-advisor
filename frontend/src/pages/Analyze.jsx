@@ -149,7 +149,7 @@ function Analyze() {
     e.preventDefault()
     
     if (!file) {
-      setError('Please select an image to upload.')
+      setError('Oh my! Trying to analyze an invisible outfit? Even our AI needs something to work with. Upload a photo, darling!')
       return
     }
 
@@ -304,21 +304,30 @@ function Analyze() {
             setActiveTab('results')
           } else {
             // Not HTML or JSON
-            setError('Unrecognized response format from server')
+            setError('Our AI fashion critic is having an existential crisis! It returned a response that neither looks like proper data nor a webpage. Even Zoolander would be confused.')
             setDebugData(response.data)
           }
         }
       } else {
-        setError('Empty response from server.')
+        setError('Our server ghosted us! It returned an empty response. Maybe it\'s taking a coffee break on the catwalk?')
       }
     } catch (err) {
       console.error('Error analyzing image:', err)
-      let errorMessage = `Error analyzing image: ${err.message}`
+      let errorMessage = ''
       let errorDetails = ''
 
       if (err.response) {
         console.log('Error response:', err.response)
-        errorMessage += ` (Status: ${err.response.status})`
+        if (err.response.status === 500) {
+          errorMessage = "Oops! Our fashion AI had a wardrobe malfunction. It's not you, it's us. Our server is having a bad hair day!"
+        } else if (err.response.status === 400) {
+          errorMessage = "Hmm, that image is giving our AI fashionista a headache. It might be too avant-garde for our current algorithm!"
+        } else if (err.response.status === 413) {
+          errorMessage = "That image is too fabulous (or too large)! Please try a smaller file size - even supermodels need to diet sometimes."
+        } else {
+          errorMessage = `Fashion emergency! Error code: ${err.response.status}. Our digital stylist is temporarily out of service.`
+        }
+        
         if (err.response.data) {
           if (typeof err.response.data === 'object') {
             const detail = err.response.data.detail || err.response.data.error || JSON.stringify(err.response.data)
@@ -327,6 +336,8 @@ function Analyze() {
             errorDetails = err.response.data
           }
         }
+      } else {
+        errorMessage = `Yikes! Our fashion analyzer tripped on the runway. ${err.message || "Please try again when our AI has recovered from its fashion faux pas."}`
       }
 
       setError(errorMessage)
@@ -1292,11 +1303,30 @@ function Analyze() {
 
               {error && (
                 <div className="mt-8 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-2xl mx-auto animate-fadeIn">
-                  <p className="font-medium flex items-center">
-                    <i className="fas fa-exclamation-circle mr-2" />
-                    Error
+                  <p className="font-medium flex items-center text-lg">
+                    <i className="fas fa-exclamation-triangle mr-2" />
+                    Oops! Fashion Faux Pas Alert!
                   </p>
-                  <p>{error}</p>
+                  <p className="mt-2">{error}</p>
+                  <div className="mt-4 p-3 bg-white rounded-lg border border-red-100 text-gray-700">
+                    <p className="font-medium flex items-center mb-2">
+                      <i className="fas fa-lightbulb text-yellow-500 mr-2" />
+                      Fashion Tip:
+                    </p>
+                    <p className="text-sm">
+                      Even supermodels have bad photo days! Try uploading a clearer image, or as fashion icon Tim Gunn would say, "Make it work!" 
+                      Our AI works best with well-lit, uncluttered images of clothing items.
+                    </p>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button 
+                      onClick={() => setError('')}
+                      className="px-4 py-2 bg-white text-red-600 rounded-full text-sm hover:bg-red-100 transition-colors flex items-center"
+                    >
+                      <i className="fas fa-times mr-2"></i>
+                      Dismiss
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
