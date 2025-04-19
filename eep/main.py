@@ -2834,193 +2834,508 @@ async def process_match(
     bottomwear_data: bytes
 ) -> Dict:
     """
-    Process match request between topwear and bottomwear.
+    Process match request by:
+    1. Sending images to detection-iep to identify clothing items
+    2. Sending images to style-iep for style classification
+    3. Extracting specific garments and sending to feature-iep
+    4. Preparing payload with all extracted data
+    5. Sending preprocessed data to match-iep for final scoring
     
     Args:
-        client: httpx client for making requests
-        topwear_data: Raw bytes of the topwear image
-        bottomwear_data: Raw bytes of the bottomwear image
+        client: httpx client
+        topwear_data: image data for top clothing item
+        bottomwear_data: image data for bottom clothing item
         
     Returns:
-        Match analysis result
+        dict: match results
     """
     try:
-        logger.info("Processing match request")
+        logger.info("Processing match request through centralized pipeline")
         
-        # Create files for multipart upload
-        files = {
-            "topwear": ("topwear.jpg", topwear_data, "image/jpeg"),
-            "bottomwear": ("bottomwear.jpg", bottomwear_data, "image/jpeg")
+        # STEP 1: Send both images to detection-iep
+        logger.info("Sending images to Detection IEP")
+        detection_tasks = [
+            client.post(
+                f"{DETECTION_SERVICE_URL}/detect",
+                files={"file": ("topwear.jpg", topwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{DETECTION_SERVICE_URL}/detect",
+                files={"file": ("bottomwear.jpg", bottomwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_detection_response, bottom_detection_response = await asyncio.gather(*detection_tasks)
+        
+        if top_detection_response.status_code != 200 or bottom_detection_response.status_code != 200:
+            logger.error(f"Detection IEP error: Top status={top_detection_response.status_code}, Bottom status={bottom_detection_response.status_code}")
+            return {"error": "Detection service error"}
+        
+        top_detection_result = top_detection_response.json()
+        bottom_detection_result = bottom_detection_response.json()
+        
+        # STEP 2: Send both images to style-iep
+        logger.info("Sending images to Style IEP")
+        style_tasks = [
+            client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files={"file": ("topwear.jpg", topwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{STYLE_SERVICE_URL}/classify",
+                files={"file": ("bottomwear.jpg", bottomwear_data, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_style_response, bottom_style_response = await asyncio.gather(*style_tasks)
+        
+        if top_style_response.status_code != 200 or bottom_style_response.status_code != 200:
+            logger.error(f"Style IEP error: Top status={top_style_response.status_code}, Bottom status={bottom_style_response.status_code}")
+            return {"error": "Style service error"}
+        
+        top_style_result = top_style_response.json()
+        bottom_style_result = bottom_style_response.json()
+        
+        # STEP 3: Extract specific garments from detection results
+        # Find shirt in topwear
+        top_shirt = None
+        top_shirt_crop = None
+        
+        if "detections" in top_detection_result:
+            for detection in top_detection_result["detections"]:
+                if detection.get("class_name") in ["Shirt", "T-Shirt", "Shirt/T-Shirt", "Top"]:
+                    top_shirt = detection
+                    # Extract crop from the image using bbox
+                    try:
+                        import io
+                        from PIL import Image
+                        # Convert to PIL image
+                        top_image = Image.open(io.BytesIO(topwear_data)).convert('RGB')
+                        # Extract crop
+                        bbox = detection.get("bbox", [0, 0, 0, 0])
+                        if len(bbox) == 4:
+                            x_min, y_min, x_max, y_max = bbox
+                            # Ensure bbox is within image bounds
+                            width, height = top_image.size
+                            x_min = max(0, x_min)
+                            y_min = max(0, y_min)
+                            x_max = min(width, x_max)
+                            y_max = min(height, y_max)
+                            
+                            if x_max > x_min and y_max > y_min:
+                                top_shirt_crop = top_image.crop((x_min, y_min, x_max, y_max))
+                    except Exception as e:
+                        logger.error(f"Error extracting top shirt crop: {str(e)}")
+                    break
+        
+        # Find pants in bottomwear
+        bottom_pants = None
+        bottom_pants_crop = None
+        
+        if "detections" in bottom_detection_result:
+            for detection in bottom_detection_result["detections"]:
+                if detection.get("class_name") in ["Pants", "Shorts", "Pants/Shorts"]:
+                    bottom_pants = detection
+                    # Extract crop from the image using bbox
+                    try:
+                        import io
+                        from PIL import Image
+                        # Convert to PIL image
+                        bottom_image = Image.open(io.BytesIO(bottomwear_data)).convert('RGB')
+                        # Extract crop
+                        bbox = detection.get("bbox", [0, 0, 0, 0])
+                        if len(bbox) == 4:
+                            x_min, y_min, x_max, y_max = bbox
+                            # Ensure bbox is within image bounds
+                            width, height = bottom_image.size
+                            x_min = max(0, x_min)
+                            y_min = max(0, y_min)
+                            x_max = min(width, x_max)
+                            y_max = min(height, y_max)
+                            
+                            if x_max > x_min and y_max > y_min:
+                                bottom_pants_crop = bottom_image.crop((x_min, y_min, x_max, y_max))
+                    except Exception as e:
+                        logger.error(f"Error extracting bottom pants crop: {str(e)}")
+                    break
+        
+        # STEP 4: Extract features for the specific garments or full images
+        logger.info("Extracting features")
+        
+        # Prepare images for feature extraction
+        top_feature_image = topwear_data
+        bottom_feature_image = bottomwear_data
+        
+        # If we have crops, use them instead
+        if top_shirt_crop:
+            import io
+            top_crop_bytes = io.BytesIO()
+            top_shirt_crop.save(top_crop_bytes, format='JPEG')
+            top_feature_image = top_crop_bytes.getvalue()
+        
+        if bottom_pants_crop:
+            import io
+            bottom_crop_bytes = io.BytesIO()
+            bottom_pants_crop.save(bottom_crop_bytes, format='JPEG')
+            bottom_feature_image = bottom_crop_bytes.getvalue()
+        
+        # Send feature extraction requests
+        feature_tasks = [
+            client.post(
+                f"{FEATURE_SERVICE_URL}/extract",
+                files={"file": ("top_feature.jpg", top_feature_image, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            ),
+            client.post(
+                f"{FEATURE_SERVICE_URL}/extract",
+                files={"file": ("bottom_feature.jpg", bottom_feature_image, "image/jpeg")},
+                timeout=SERVICE_TIMEOUT
+            )
+        ]
+        top_feature_response, bottom_feature_response = await asyncio.gather(*feature_tasks)
+        
+        if top_feature_response.status_code != 200 or bottom_feature_response.status_code != 200:
+            logger.error(f"Feature IEP error: Top status={top_feature_response.status_code}, Bottom status={bottom_feature_response.status_code}")
+            # We'll continue even if feature extraction fails, as match-iep can handle missing features
+        
+        top_feature_result = top_feature_response.json() if top_feature_response.status_code == 200 else {"error": "Feature extraction failed"}
+        bottom_feature_result = bottom_feature_response.json() if bottom_feature_response.status_code == 200 else {"error": "Feature extraction failed"}
+        
+        # STEP 5: Prepare payload for match-iep with all preprocessed data
+        # Extract top style
+        top_style = "unknown"
+        if "styles" in top_style_result and top_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(top_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            top_style = sorted_styles[0]["style_name"].lower()
+        
+        # Extract bottom style
+        bottom_style = "unknown"
+        if "styles" in bottom_style_result and bottom_style_result["styles"]:
+            # Sort by confidence and take the highest
+            sorted_styles = sorted(bottom_style_result["styles"], key=lambda x: x["confidence"], reverse=True)
+            bottom_style = sorted_styles[0]["style_name"].lower()
+        
+        # Get feature vectors
+        top_vector = top_feature_result.get("features", None)
+        bottom_vector = bottom_feature_result.get("features", None)
+        
+        # Get color histograms
+        top_histogram = top_feature_result.get("color_histogram", None)
+        bottom_histogram = bottom_feature_result.get("color_histogram", None)
+        
+        # Build match request
+        match_request = {
+            "top_style": top_style,
+            "bottom_style": bottom_style,
+            "top_vector": top_vector,
+            "bottom_vector": bottom_vector,
+            "top_histogram": top_histogram,
+            "bottom_histogram": bottom_histogram,
+            "top_detection": top_shirt or {},
+            "bottom_detection": bottom_pants or {}
         }
         
-        # Call the match service
-        response = await client.post(
-            f"{MATCH_SERVICE_URL}/match",
-            files=files,
-            timeout=float(SERVICE_TIMEOUT)
+        # STEP 6: Send preprocessed data to Match IEP
+        logger.info("Sending preprocessed data to Match IEP")
+        match_response = await client.post(
+            f"{MATCH_SERVICE_URL}/compute_match",
+            json=match_request,
+            timeout=SERVICE_TIMEOUT
         )
         
-        # Check response
-        if response.status_code != 200:
-            error_message = f"Match service returned error: {response.status_code}"
-            logger.error(error_message)
-            if response.status_code == 400:
-                try:
-                    error_detail = response.json().get('detail', 'Bad request')
-                    error_message = f"Bad request: {error_detail}"
-                except:
-                    pass
-            raise Exception(error_message)
+        if match_response.status_code != 200:
+            logger.error(f"Match IEP error: {match_response.status_code} - {match_response.text}")
+            return {"error": "Match service error"}
         
-        # Parse response
-        match_result = response.json()
-        logger.info(f"Match result received with score: {match_result.get('match_score', 'unknown')}")
+        # Get the match result
+        match_result = match_response.json()
         
+        # Validate the match result structure
+        logger.info(f"Match result received with keys: {list(match_result.keys())}")
+        
+        # Check if expected fields are present
+        required_fields = ["match_score", "analysis", "suggestions"]
+        missing_fields = [field for field in required_fields if field not in match_result]
+        
+        if missing_fields:
+            logger.error(f"Match result missing required fields: {missing_fields}")
+            # Add default values for missing fields to prevent frontend errors
+            for field in missing_fields:
+                if field == "match_score":
+                    match_result["match_score"] = 50  # Default score
+                elif field == "analysis":
+                    match_result["analysis"] = {
+                        "default": {
+                            "score": 50,
+                            "analysis": "Analysis data unavailable"
+                        }
+                    }
+                elif field == "suggestions":
+                    match_result["suggestions"] = ["No specific suggestions available"]
+        
+        # Return the validated match result
         return match_result
-    
+        
     except Exception as e:
-        logger.error(f"Error in process_match: {str(e)}")
-        raise
+        logger.error(f"Error in match processing: {str(e)}")
+        logger.error(traceback.format_exc())  # Add stack trace for better debugging
+        return {"error": f"Match processing error: {str(e)}"}
 
-@app.post("/match", response_class=HTMLResponse)
+@app.post("/match")
 async def match_outfit(
     request: Request,
     topwear: UploadFile = File(...),
     bottomwear: UploadFile = File(...)
 ):
-    """
-    Handle outfit match request from web UI
-    """
+    """Handle outfit matching request from the web UI"""
+    start_time = time.time()
+    
     try:
-        logger.info(f"Received match request for: {topwear.filename} and {bottomwear.filename}")
+        # Get file contents
+        topwear_content = await topwear.read()
+        bottomwear_content = await bottomwear.read()
         
-        # Validate file format
-        if not is_valid_image_file(topwear.filename) or not is_valid_image_file(bottomwear.filename):
-            error_html = templates.get_template("error.html").render(
-                {"request": request, "error": "Invalid file format. Please upload JPG or PNG images only.", "redirect_url": "/", "redirect_time": 5}
-            )
-            return HTMLResponse(content=error_html)
-        
-        # Read file contents
-        topwear_contents = await topwear.read()
-        bottomwear_contents = await bottomwear.read()
-        
-        # Generate unique filenames
-        timestamp = int(time.time())
-        topwear_filename = f"top_{timestamp}.jpg"
-        bottomwear_filename = f"bottom_{timestamp}.jpg"
-        
-        # Save the uploaded files
-        topwear_path = os.path.join(UPLOAD_FOLDER, topwear_filename)
-        bottomwear_path = os.path.join(UPLOAD_FOLDER, bottomwear_filename)
-        
-        async with aiofiles.open(topwear_path, "wb") as f:
-            await f.write(topwear_contents)
-            
-        async with aiofiles.open(bottomwear_path, "wb") as f:
-            await f.write(bottomwear_contents)
-            
-        # Validate that there aren't multiple people in the images
+        # Validate that there are not too many people in the images
         async with httpx.AsyncClient() as client:
             # Validate topwear image
-            is_valid_topwear = await validate_single_person_in_image(client, topwear_filename, topwear_contents)
+            is_valid_topwear, topwear_error = await validate_no_people_in_image(
+                client, 
+                topwear_content,
+                topwear.filename
+            )
+            
             if not is_valid_topwear:
-                error_html = templates.get_template("error.html").render(
-                    {"request": request, "error": "Too many people detected in the topwear image. Please upload a photo with at most one person.", "redirect_url": "/", "redirect_time": 5}
+                return HTMLResponse(
+                    content=f"""
+                    <html>
+                        <head>
+                            <title>Match Validation Error</title>
+                            <style>
+                                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                                .error {{ color: #e74c3c; background: #fef5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }}
+                                .message {{ font-size: 1.1em; margin-bottom: 20px; }}
+                                a {{ display: inline-block; margin-top: 20px; background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }}
+                                a:hover {{ background: #2980b9; }}
+                                h1 {{ color: #2c3e50; text-align: center; }}
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Match Validation</h1>
+                            <div class="error">
+                                <p class="message">{topwear_error}</p>
+                            </div>
+                            <div style="text-align: center;">
+                                <a href="/">Back to Home</a>
+                            </div>
+                        </body>
+                    </html>
+                    """,
+                    status_code=400
                 )
-                return HTMLResponse(content=error_html)
             
             # Validate bottomwear image
-            is_valid_bottomwear = await validate_single_person_in_image(client, bottomwear_filename, bottomwear_contents)
-            if not is_valid_bottomwear:
-                error_html = templates.get_template("error.html").render(
-                    {"request": request, "error": "Too many people detected in the bottomwear image. Please upload a photo with at most one person.", "redirect_url": "/", "redirect_time": 5}
-                )
-                return HTMLResponse(content=error_html)
+            is_valid_bottomwear, bottomwear_error = await validate_no_people_in_image(
+                client, 
+                bottomwear_content,
+                bottomwear.filename
+            )
             
-            try:
-                # Process the match request
-                match_result = await process_match(client, topwear_contents, bottomwear_contents)
-                
-                # Format the match score for display
-                match_score = match_result.get("match_score", 0)
-                formatted_score = f"{match_score:.1f}" if isinstance(match_score, float) else str(match_score)
-                
-                # Get analysis and suggestions
-                analysis = match_result.get("analysis", {})
-                suggestions = match_result.get("suggestions", [])
-                
-                # Render the result page
-                return templates.TemplateResponse(
-                    "match_result.html",
-                    {
-                        "request": request,
-                        "topwear_image": f"/static/uploads/{topwear_filename}",
-                        "bottomwear_image": f"/static/uploads/{bottomwear_filename}",
-                        "match_score": formatted_score,
-                        "analysis": analysis,
-                        "suggestions": suggestions
-                    }
+            if not is_valid_bottomwear:
+                return HTMLResponse(
+                    content=f"""
+                    <html>
+                        <head>
+                            <title>Match Validation Error</title>
+                            <style>
+                                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                                .error {{ color: #e74c3c; background: #fef5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }}
+                                .message {{ font-size: 1.1em; margin-bottom: 20px; }}
+                                a {{ display: inline-block; margin-top: 20px; background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }}
+                                a:hover {{ background: #2980b9; }}
+                                h1 {{ color: #2c3e50; text-align: center; }}
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Match Validation</h1>
+                            <div class="error">
+                                <p class="message">{bottomwear_error}</p>
+                            </div>
+                            <div style="text-align: center;">
+                                <a href="/">Back to Home</a>
+                            </div>
+                        </body>
+                    </html>
+                    """,
+                    status_code=400
                 )
-            except Exception as e:
-                error_message = str(e)
-                logger.error(f"Error processing match: {error_message}")
-                error_html = templates.get_template("error.html").render(
-                    {"request": request, "error": f"Error processing match: {error_message}", "redirect_url": "/", "redirect_time": 5}
-                )
-                return HTMLResponse(content=error_html)
-                
-    except Exception as e:
-        logger.error(f"Error in match_outfit: {str(e)}")
-        error_html = templates.get_template("error.html").render(
-            {"request": request, "error": f"An error occurred: {str(e)}", "redirect_url": "/", "redirect_time": 5}
+        
+        # Generate request ID
+        request_id = str(uuid.uuid4())
+        
+        # Save uploaded images
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        topwear_filename = f"{timestamp}_topwear_{request_id}.jpg"
+        bottomwear_filename = f"{timestamp}_bottomwear_{request_id}.jpg"
+        
+        topwear_path = await save_uploaded_image(topwear_content, topwear_filename)
+        bottomwear_path = await save_uploaded_image(bottomwear_content, bottomwear_filename)
+        
+        # Get public URLs
+        topwear_url = f"/static/uploads/{os.path.basename(topwear_path)}"
+        bottomwear_url = f"/static/uploads/{os.path.basename(bottomwear_path)}"
+        
+        # Process match
+        async with httpx.AsyncClient() as client:
+            match_result = await process_match(client, topwear_content, bottomwear_content)
+        
+        # Check for errors
+        if "error" in match_result:
+            raise HTTPException(status_code=500, detail=match_result["error"])
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Log result
+        logger.info(f"Match processed successfully in {processing_time:.2f}s with score {match_result['match_score']}")
+        
+        # Generate HTML for the results page
+        html_result = generate_match_result_html(
+            topwear_img=topwear_url,
+            bottomwear_img=bottomwear_url,
+            match_result=match_result,
+            processing_time=processing_time,
+            timestamp=datetime.now().isoformat()
         )
-        return HTMLResponse(content=error_html)
+        
+        return HTMLResponse(content=html_result, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"Error processing match request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
 
+# Add API endpoint for match (JSON request/response)
 @app.post("/api/match", response_model=MatchResponse)
 async def api_match_outfit(
     topwear: UploadFile = File(...),
     bottomwear: UploadFile = File(...)
 ):
     """
-    API endpoint for outfit matching
+    API endpoint for matching a topwear item with a bottomwear item
     """
     try:
-        logger.info(f"Received API match request for: {topwear.filename} and {bottomwear.filename}")
+        # Get file contents
+        topwear_content = await topwear.read()
+        bottomwear_content = await bottomwear.read()
         
-        # Validate file format
-        if not is_valid_image_file(topwear.filename) or not is_valid_image_file(bottomwear.filename):
-            raise HTTPException(status_code=400, detail="Invalid file format. Please upload JPG or PNG images only.")
-        
-        # Read file contents
-        topwear_contents = await topwear.read()
-        bottomwear_contents = await bottomwear.read()
-        
-        # Validate that there aren't multiple people in the images
+        # Validate that there are not too many people in the images
         async with httpx.AsyncClient() as client:
             # Validate topwear image
-            is_valid_topwear = await validate_single_person_in_image(client, topwear.filename, topwear_contents)
+            is_valid_topwear, topwear_error = await validate_no_people_in_image(
+                client, 
+                topwear_content,
+                topwear.filename
+            )
+            
             if not is_valid_topwear:
-                raise HTTPException(status_code=400, detail="Too many people detected in the topwear image. Please upload a photo with at most one person.")
+                raise HTTPException(status_code=400, detail=topwear_error)
             
             # Validate bottomwear image
-            is_valid_bottomwear = await validate_single_person_in_image(client, bottomwear.filename, bottomwear_contents)
-            if not is_valid_bottomwear:
-                raise HTTPException(status_code=400, detail="Too many people detected in the bottomwear image. Please upload a photo with at most one person.")
+            is_valid_bottomwear, bottomwear_error = await validate_no_people_in_image(
+                client, 
+                bottomwear_content,
+                bottomwear.filename
+            )
             
-            try:
-                # Process the match request
-                match_result = await process_match(client, topwear_contents, bottomwear_contents)
-                return match_result
-            except Exception as e:
-                logger.error(f"Error processing API match: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error processing match: {str(e)}")
-    
-    except HTTPException:
-        raise
+            if not is_valid_bottomwear:
+                raise HTTPException(status_code=400, detail=bottomwear_error)
+        
+        # Generate request ID
+        request_id = str(uuid.uuid4())
+        
+        # Save uploaded images
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        topwear_filename = f"{timestamp}_topwear_{request_id}.jpg"
+        bottomwear_filename = f"{timestamp}_bottomwear_{request_id}.jpg"
+        
+        topwear_path = await save_uploaded_image(topwear_content, topwear_filename)
+        bottomwear_path = await save_uploaded_image(bottomwear_content, bottomwear_filename)
+        
+        # Process match
+        async with httpx.AsyncClient() as client:
+            logger.info(f"API match request: Sending to process_match")
+            match_result = await process_match(client, topwear_content, bottomwear_content)
+        
+        # Check for errors
+        if "error" in match_result:
+            logger.error(f"Error in match result: {match_result['error']}")
+            raise HTTPException(status_code=500, detail=match_result["error"])
+        
+        # Log the structure of the match_result for debugging
+        logger.info(f"Match result keys: {list(match_result.keys())}")
+        if "match_score" in match_result:
+            logger.info(f"Match score: {match_result['match_score']}")
+        else:
+            logger.error("No match_score in result")
+            
+        if "analysis" in match_result:
+            logger.info(f"Analysis keys: {list(match_result['analysis'].keys())}")
+        else:
+            logger.error("No analysis in result")
+            
+        if "suggestions" in match_result:
+            logger.info(f"Number of suggestions: {len(match_result['suggestions'])}")
+        else:
+            logger.error("No suggestions in result")
+        
+        # Log the complete response JSON for debugging (truncate if too large)
+        import json
+        response_json = json.dumps(match_result)
+        if len(response_json) > 1000:
+            logger.info(f"API match response (truncated): {response_json[:1000]}...")
+        else:
+            logger.info(f"API match response: {response_json}")
+            
+        # Validate that the response can be properly serialized as the MatchResponse model
+        try:
+            # This will fail if the structure doesn't match the model definition
+            response_obj = MatchResponse(
+                match_score=match_result["match_score"],
+                analysis=match_result["analysis"],
+                suggestions=match_result.get("suggestions", []),
+                alternative_pairings=match_result.get("alternative_pairings", [])
+            )
+            logger.info("Response successfully validated against MatchResponse model")
+        except Exception as e:
+            logger.error(f"Response validation failed: {str(e)}")
+            # Fix any issues with the response structure
+            if not isinstance(match_result["match_score"], int):
+                match_result["match_score"] = int(float(match_result["match_score"]))
+                
+            # Ensure analysis is properly structured
+            if not isinstance(match_result["analysis"], dict):
+                logger.error(f"Analysis is not a dict: {type(match_result['analysis'])}")
+                match_result["analysis"] = {
+                    "default": {
+                        "score": 50,
+                        "analysis": "Analysis data unavailable"
+                    }
+                }
+            
+            # Ensure suggestions is a list of strings
+            if "suggestions" not in match_result or not isinstance(match_result["suggestions"], list):
+                match_result["suggestions"] = ["No specific suggestions available"]
+        
+        # Return the match result
+        logger.info("Returning API match result to frontend")
+        return match_result
+        
     except Exception as e:
-        logger.error(f"Error in api_match_outfit: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        logger.error(f"Error processing API match request: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Match analysis failed: {str(e)}")
 
 def generate_match_result_html(topwear_img, bottomwear_img, match_result, processing_time, timestamp):
     """Generate HTML for displaying match analysis results"""
@@ -3551,45 +3866,85 @@ async def count_people(
         logger.error(f"Error in people counting: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-async def validate_single_person_in_image(client: httpx.AsyncClient, image_contents: bytes, filename: str) -> bool:
+async def validate_no_people_in_image(client: httpx.AsyncClient, image_contents: bytes, filename: str) -> tuple[bool, str]:
     """
-    Validates that an image contains at most 1 person.
+    Validates that the image contains zero or one person (acceptable for clothing items).
     
     Args:
-        client: httpx client for making requests
-        image_contents: Raw bytes of the image file
-        filename: Name of the image file for logging
-        
+        client: HTTP client
+        image_contents: Image file contents
+        filename: Name of the image file
+    
     Returns:
-        True if the image has 0 or 1 person, False if it has more than 1 person
+        Tuple of (is_valid, message) where is_valid is True if image contains 0 or 1 person,
+        and message contains the error message if not valid
     """
     try:
-        logger.info(f"Checking person count in image: {filename}")
+        files = {"file": (filename, image_contents, "image/jpeg")}
         
-        # Create multipart file upload
-        files = {'file': (filename, image_contents, 'image/jpeg')}
+        response = await client.post(
+            f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
+            files=files,
+            timeout=float(SERVICE_TIMEOUT)
+        )
         
-        # Call the people detector IEP
-        url = f"{PPL_DETECTOR_SERVICE_URL}/count_persons"
-        response = await client.post(url, files=files)
+        if response.status_code != 200:
+            logger.error(f"People counting failed for {filename}: {response.text}")
+            return (True, "")  # Allow to proceed if validation fails
         
-        # Parse response
-        if response.status_code == 200:
-            result = response.json()
-            person_count = result.get('person_count', 0)
-            logger.info(f"Detected {person_count} person(s) in image {filename}")
-            
-            # Return True if 0 or 1 person, False if more than 1
-            return person_count <= 1
-        else:
-            # If we can't validate, default to True to allow processing
-            logger.warning(f"Failed to validate person count: {response.status_code} - {response.text}")
-            return True
-            
+        result = response.json()
+        person_count = result.get("person_count", 0)
+        
+        if person_count > 1:
+            return (False, f"We detected multiple people in your {filename}. Please upload an image with just the clothing item or a single person.")
+        
+        # If zero or one person, return True (both are acceptable for clothing items)
+        return (True, "")
+    
     except Exception as e:
-        logger.error(f"Error validating person count: {str(e)}")
-        # If the validation fails, default to True to allow processing
-        return True
+        logger.error(f"Error validating person count for {filename}: {e}")
+        return (True, "")  # Allow to proceed if validation fails
+
+async def validate_single_person_in_image(client: httpx.AsyncClient, image_contents: bytes, filename: str) -> tuple[bool, str]:
+    """
+    Validates that the image contains exactly one person.
+    
+    Args:
+        client: HTTP client
+        image_contents: Image file contents
+        filename: Name of the image file
+    
+    Returns:
+        Tuple of (is_valid, message) where is_valid is True if image contains exactly 1 person,
+        and message contains the error message if not valid
+    """
+    try:
+        files = {"file": (filename, image_contents, "image/jpeg")}
+        
+        response = await client.post(
+            f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
+            files=files,
+            timeout=float(SERVICE_TIMEOUT)
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"People counting failed: {response.text}")
+            return (False, "Unable to validate the number of people in the image.")
+        
+        result = response.json()
+        person_count = result.get("person_count", 0)
+        
+        if person_count == 0:
+            return (False, "We couldn't detect anyone in your photo. Please provide a clear photo of yourself.")
+        elif person_count > 1:
+            return (False, "We know you're a social person, but we need a picture of you alone for the virtual try-on to work properly.")
+        
+        # If exactly one person, return True
+        return (True, "")
+    
+    except Exception as e:
+        logger.error(f"Error validating person count: {e}")
+        return (False, "Error validating the image. Please try again.")
 
 if __name__ == "__main__":
     import uvicorn
