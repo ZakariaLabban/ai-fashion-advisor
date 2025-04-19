@@ -27,8 +27,14 @@ EXPOSE 9000
 
 # Service URLs (can be overridden at runtime)
 ENV DETECTION_SERVICE_URL="http://detection-iep:8001"
-ENV STYLE_SERVICE_URL="http://style-iep:8002" 
+ENV STYLE_SERVICE_URL="http://style-iep:8002"
 ENV FEATURE_SERVICE_URL="http://feature-iep:8003"
+ENV VIRTUAL_TRYON_SERVICE_URL="http://virtual-tryon-iep:8004"
+ENV ELEGANCE_SERVICE_URL="http://elegance-iep:8005"
+ENV RECO_DATA_SERVICE_URL="http://reco-data-iep:8007"
+ENV MATCH_SERVICE_URL="http://match-iep:8008"
+ENV TEXT2IMAGE_SERVICE_URL="http://text2image-iep:8020"
+ENV PPL_DETECTOR_SERVICE_URL="http://ppl-detector-iep:8009"
 ENV SERVICE_TIMEOUT="30"
 ENV PYTHONUNBUFFERED=1
 

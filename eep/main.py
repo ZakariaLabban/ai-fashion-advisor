@@ -49,6 +49,7 @@ ELEGANCE_SERVICE_URL = os.getenv("ELEGANCE_SERVICE_URL", "http://elegance-iep:80
 RECO_DATA_SERVICE_URL = os.getenv("RECO_DATA_SERVICE_URL", "http://reco-data-iep:8007")
 MATCH_SERVICE_URL = os.getenv("MATCH_SERVICE_URL", "http://match-iep:8008")
 TEXT2IMAGE_SERVICE_URL = os.getenv("TEXT2IMAGE_SERVICE_URL", "http://text2image-iep:8020")
+PPL_DETECTOR_SERVICE_URL = os.getenv("PPL_DETECTOR_SERVICE_URL", "http://ppl-detector-iep:8009")
 
 # Timeout for service requests (in seconds)
 SERVICE_TIMEOUT = int(os.getenv("SERVICE_TIMEOUT", "30"))
@@ -774,6 +775,7 @@ async def check_services_health():
                 check_iep_health(client, f"{RECO_DATA_SERVICE_URL}/health", "Recommendation Data IEP"),
                 check_iep_health(client, f"{MATCH_SERVICE_URL}/health", "Match Analysis IEP"),
                 check_iep_health(client, f"{TEXT2IMAGE_SERVICE_URL}/health", "Text to Image IEP"),
+                check_iep_health(client, f"{PPL_DETECTOR_SERVICE_URL}/health", "People Detector IEP"),
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -786,6 +788,7 @@ async def check_services_health():
                 "reco_data": str(results[5] == True),
                 "match": str(results[6] == True),
                 "text2image": str(results[7] == True),
+                "ppl_detector": str(results[8] == True),
             }
             
             all_healthy = all(s == "True" for s in services_status.values())
@@ -3573,6 +3576,100 @@ async def api_check_query(request: SearchRequest):
             "is_clothing_related": False,
             "message": f"Error checking query: {str(e)}"
         }
+
+# Add new routes for People Detector IEP
+@app.post("/detect_people", tags=["People Detection"])
+async def detect_people(
+    file: UploadFile = File(...),
+    include_crops: bool = Form(False),
+    confidence: Optional[float] = Form(None)
+):
+    """
+    Detect people in the uploaded image.
+    
+    - **file**: The image file to process
+    - **include_crops**: Whether to include cropped images in the response
+    - **confidence**: Optional confidence threshold override
+    """
+    start_time = time.time()
+    
+    try:
+        contents = await file.read()
+        
+        # Process with IEP
+        form_data = {
+            "include_crops": str(include_crops).lower(),
+        }
+        
+        if confidence is not None:
+            form_data["confidence"] = str(confidence)
+        
+        files = {"file": (file.filename, contents, file.content_type)}
+        
+        async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                f"{PPL_DETECTOR_SERVICE_URL}/detect",
+                files=files,
+                data=form_data
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"People detection failed: {response.text}")
+                raise HTTPException(status_code=response.status_code, detail="People detection failed")
+            
+            # Get the detection results
+            detection_results = response.json()
+            
+            # Measure processing time
+            processing_time = time.time() - start_time
+            
+            # Include total processing time
+            detection_results["total_processing_time"] = processing_time
+            
+            return detection_results
+    
+    except Exception as e:
+        logger.error(f"Error in people detection: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+@app.post("/count_people", tags=["People Detection"])
+async def count_people(
+    file: UploadFile = File(...),
+    confidence: Optional[float] = Form(None)
+):
+    """
+    Count the number of people in the uploaded image.
+    
+    - **file**: The image file to process
+    - **confidence**: Optional confidence threshold override
+    """
+    try:
+        contents = await file.read()
+        
+        # Process with IEP
+        form_data = {}
+        if confidence is not None:
+            form_data["confidence"] = str(confidence)
+        
+        files = {"file": (file.filename, contents, file.content_type)}
+        
+        async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
+                files=files,
+                data=form_data
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"People counting failed: {response.text}")
+                raise HTTPException(status_code=response.status_code, detail="People counting failed")
+            
+            # Return the results
+            return response.json()
+    
+    except Exception as e:
+        logger.error(f"Error in people counting: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

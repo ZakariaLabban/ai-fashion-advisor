@@ -28,6 +28,7 @@ services:
       - reco-data-iep
       - match-iep
       - text2image-iep
+      - ppl-detector-iep
     environment:
       - DETECTION_SERVICE_URL=http://detection-iep:8001
       - STYLE_SERVICE_URL=http://style-iep:8002
@@ -37,6 +38,7 @@ services:
       - RECO_DATA_SERVICE_URL=http://reco-data-iep:8007
       - MATCH_SERVICE_URL=http://match-iep:8008
       - TEXT2IMAGE_SERVICE_URL=http://text2image-iep:8020
+      - PPL_DETECTOR_SERVICE_URL=http://ppl-detector-iep:8009
       - SERVICE_TIMEOUT=60
 
   # Detection Internal Endpoint Processor
@@ -140,4 +142,17 @@ services:
       - ./text2image_iep:/app
       - ./text2image_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
     env_file:
-      - ./text2image_iep/.env 
+      - ./text2image_iep/.env
+      
+  # Person Detection Internal Endpoint Processor
+  ppl-detector-iep:
+    build: ./ppl_detector_iep
+    container_name: ppl-detector-iep
+    ports:
+      - "7009:8009"
+    volumes:
+      - ./ppl_detector_iep:/app
+      - ./yolov8n.pt:/app/models/yolov8n.pt
+    environment:
+      - MODEL_PATH=/app/models/yolov8n.pt
+      - CONFIDENCE_THRESHOLD=0.45 
