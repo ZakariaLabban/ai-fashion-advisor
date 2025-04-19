@@ -159,6 +159,10 @@ function Analyze() {
     setDebugData(null)
     setRawResponse(null)
 
+    // For testing - force show multiple people warning
+    // Uncomment this line to force show the warning
+    setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+    
     const formData = new FormData()
     formData.append('file', file)
 
@@ -174,12 +178,38 @@ function Analyze() {
       console.log('Raw API response:', response)
       setRawResponse(response.data)  // Store entire response for debugging
       
+      // Direct check for multiple people warning in raw response
+      if (typeof response.data === 'string' && 
+          (response.data.includes('detected multiple people') || 
+           response.data.includes('multiple people detected') ||
+           response.data.includes('Multiple people'))) {
+        setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+      }
+      
       if (response.data) {
         try {
           // 1. Try JSON
           const jsonData = JSON.parse(response.data)
           setResults(jsonData)
           setDebugData(JSON.stringify(jsonData, null, 2))
+          
+          // Check if more than one person was detected in the detections
+          if (jsonData.detections) {
+            const personClasses = jsonData.detections
+              .filter(d => d.class_name === 'Person' || d.class_name.includes('person') || d.class_name.includes('Person'))
+              .length;
+            
+            if (personClasses > 1) {
+              setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+            }
+          }
+
+          // Check if response contains warning message
+          if (jsonData && jsonData.warning_message) {
+            setError(jsonData.warning_message)
+          }
+
+          setActiveTab('results')
         } catch (parseError) {
           // 2. If not JSON, maybe HTML
           if (response.data.includes('<!DOCTYPE html>')) {
@@ -301,6 +331,31 @@ function Analyze() {
             console.log("FINAL EXTRACTED RESULTS:", JSON.stringify(extractedResults, null, 2))
             setResults(extractedResults)
             setDebugData('HTML response successfully parsed')
+            
+            // Check if more than one person was detected in the detections
+            if (extractedResults.detections) {
+              const personClasses = extractedResults.detections
+                .filter(d => d.class_name === 'Person' || d.class_name.includes('person') || d.class_name.includes('Person'))
+                .length;
+              
+              if (personClasses > 1) {
+                setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+              }
+            }
+            
+            // Check if HTML contains warning message
+            const warningElem = htmlContainer.querySelector('.warning-message');
+            if (warningElem && warningElem.textContent) {
+              setError(warningElem.textContent.trim());
+            }
+            
+            // Also check for multiple people warning directly in the HTML
+            if (response.data.includes('detected multiple people') || 
+                response.data.includes('multiple people detected') ||
+                response.data.includes('Multiple people')) {
+              setError("Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model.")
+            }
+            
             setActiveTab('results')
           } else {
             // Not HTML or JSON
@@ -324,9 +379,9 @@ function Analyze() {
           const errorData = typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data);
           
           if (errorData.includes('multiple people') || errorData.includes('Multiple people')) {
-            errorMessage = "Whoa there, social butterfly! Our AI is getting a crowd phobia trying to analyze all those people. For the best results, please upload a photo with just one fabulous outfit at a time. Let's keep this a solo fashion show!"
+            errorMessage = "Fashion is meant to be shared, but not in the same photo! Our AI works best with clothing images that have at most one person in them. Please upload photos that show just the clothing item or a single model."
           } else if (errorData.includes('no person') || errorData.includes('No person') || errorData.includes("couldn't detect a person")) {
-            errorMessage = "Um, hello? Is anybody there? Our AI couldn't find anyone in this photo! Please upload a clear picture with a person wearing the outfit - unless you're trying to showcase invisible fashion, which is... bold, but hard to analyze."
+            errorMessage = "Hmm, are you invisible? We couldn't detect anyone in this photo! Please upload a clear picture where we can actually see you - we promise we're excited to meet you!"
           } else if (err.response.status === 500) {
             errorMessage = "Oops! Our fashion AI had a wardrobe malfunction. It's not you, it's us. Our server is having a bad hair day!"
           } else if (err.response.status === 400) {
@@ -1317,18 +1372,18 @@ function Analyze() {
                 <div className="mt-8 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-2xl mx-auto animate-fadeIn">
                   <p className="font-medium flex items-center text-lg">
                     <i className={`mr-2 ${
-                      error.includes("social butterfly") ? "fas fa-users" : 
-                      error.includes("anybody there") ? "fas fa-user-slash" : 
+                      error.includes("Fashion is meant to be shared") ? "fas fa-users" : 
+                      error.includes("invisible") ? "fas fa-user-slash" : 
                       "fas fa-exclamation-triangle"
                     }`} />
-                    {error.includes("social butterfly") ? "Multiple People Detected" : 
-                     error.includes("anybody there") ? "No Person Detected" : 
+                    {error.includes("Fashion is meant to be shared") ? "Multiple People Detected" : 
+                     error.includes("invisible") ? "No Person Detected" : 
                      "Oops! Fashion Faux Pas Alert!"}
                   </p>
                   <p className="mt-2">{error}</p>
                   
                   {/* Visual indicator for multiple people */}
-                  {error.includes("social butterfly") && (
+                  {error.includes("Fashion is meant to be shared") && (
                     <div className="flex justify-center my-3">
                       <div className="relative bg-red-100 p-4 rounded-lg">
                         <div className="flex items-center space-x-2">
@@ -1352,7 +1407,7 @@ function Analyze() {
                   )}
                   
                   {/* Visual indicator for no person */}
-                  {error.includes("anybody there") && (
+                  {error.includes("invisible") && (
                     <div className="flex justify-center my-3">
                       <div className="bg-red-100 p-4 rounded-lg flex items-center space-x-4">
                         <div className="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center text-red-300 border-2 border-dashed border-red-300">
@@ -1372,12 +1427,12 @@ function Analyze() {
                       Fashion Tip:
                     </p>
                     
-                    {error.includes("social butterfly") ? (
+                    {error.includes("Fashion is meant to be shared") ? (
                       <p className="text-sm">
                         For best results, take a photo with just you in frame, preferably against a simple background.
                         Group photos are great for Instagram, but our AI works best one-on-one!
                       </p>
-                    ) : error.includes("anybody there") ? (
+                    ) : error.includes("invisible") ? (
                       <p className="text-sm">
                         Make sure you're clearly visible in the frame. Good lighting helps our AI see you better!
                         Full-body shots work best for complete outfit analysis.
@@ -1390,7 +1445,7 @@ function Analyze() {
                     )}
                   </div>
                   <div className="mt-4 flex justify-between">
-                    {error.includes("social butterfly") && (
+                    {error.includes("Fashion is meant to be shared") && (
                       <button
                         onClick={() => setActiveTab('upload')}
                         className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm hover:bg-blue-600 transition-colors flex items-center"
@@ -1399,7 +1454,7 @@ function Analyze() {
                         Try Another Photo
                       </button>
                     )}
-                    {error.includes("anybody there") && (
+                    {error.includes("invisible") && (
                       <button
                         onClick={() => setActiveTab('upload')}
                         className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm hover:bg-blue-600 transition-colors flex items-center"
@@ -1459,138 +1514,34 @@ function Analyze() {
                 </button>
               </div>
 
-              {extractAndRenderResults()}
-
-              {results && !rawResponse?.includes('<!DOCTYPE html>') && (
-                <div className="mt-8 animation-delay-300 animate-fadeIn">
-                  {results.annotated_image_path && (
-                    <div className="mb-12 text-center">
-                      <h3 className="text-2xl font-medium mb-8 inline-block pb-2 border-b-2 border-secondary text-gray-800">
-                        Analysis Visualization
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 group">
-                          <h4 className="text-xl font-medium mb-4 text-gray-700 flex items-center justify-center">
-                            <i className="fas fa-image mr-2 text-primary-400 group-hover:text-primary-500 transition-colors"></i>
-                            Original Image
-                          </h4>
-                          <div className="relative rounded-lg overflow-hidden">
-                            <img
-                              src={previewUrl}
-                              alt="Original"
-                              className="max-h-80 mx-auto rounded-lg hover:scale-105 transition-all duration-500 cursor-zoom-in"
-                              onClick={() => {
-                                // Image popup functionality could be added here
-                                window.open(previewUrl, '_blank')
-                              }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-2">
-                              <span className="text-white text-sm px-2 py-1 rounded bg-black/50">
-                                Click to view full size
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 group">
-                          <h4 className="text-xl font-medium mb-4 text-gray-700 flex items-center justify-center">
-                            <i className="fas fa-tag mr-2 text-secondary-400 group-hover:text-secondary-500 transition-colors"></i>
-                            Annotated Image
-                          </h4>
-                          <div className="relative rounded-lg overflow-hidden">
-                            <img
-                              src={
-                                results.annotated_image_path.startsWith('/')
-                                  ? results.annotated_image_path
-                                  : `/${results.annotated_image_path}`
-                              }
-                              alt="Analysis"
-                              className="max-h-80 mx-auto rounded-lg hover:scale-105 transition-all duration-500 cursor-zoom-in"
-                              onClick={() => {
-                                // Image popup functionality could be added here
-                                window.open(
-                                  results.annotated_image_path.startsWith('/')
-                                    ? results.annotated_image_path
-                                    : `/${results.annotated_image_path}`,
-                                  '_blank'
-                                )
-                              }}
-                              onError={(e) => {
-                                console.error('Failed to load annotated image:', results.annotated_image_path)
-                                e.target.src = 'https://via.placeholder.com/600x400?text=Not+Available'
-                              }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-2">
-                              <span className="text-white text-sm px-2 py-1 rounded bg-black/50">
-                                Click to view full size
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                    {/* Detections */}
-                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
-                      <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center mr-3 text-primary-500">
-                          <i className="fas fa-tshirt"></i>
-                        </div>
-                        Clothing Items
-                        <Tooltip tip="AI-detected clothing items with confidence scores">
-                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
-                            <i className="fas fa-info-circle text-sm"></i>
-                          </button>
-                        </Tooltip>
-                      </h3>
-                      <div className="bg-gray-50 p-4 rounded-lg">{displayDetections(results.detections)}</div>
-                    </div>
-
-                    {/* Style */}
-                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
-                      <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <div className="w-10 h-10 rounded-full bg-secondary-100 flex items-center justify-center mr-3 text-secondary-500">
-                          <i className="fas fa-palette"></i>
-                        </div>
-                        Style Classification
-                        <Tooltip tip="AI-classified fashion styles with confidence scores">
-                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
-                            <i className="fas fa-info-circle text-sm"></i>
-                          </button>
-                        </Tooltip>
-                      </h3>
-                      <div className="bg-gray-50 p-4 rounded-lg">{displayStyles(results.styles)}</div>
-                    </div>
-
-                    {/* Features */}
-                    <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
-                      <h3 className="text-xl font-medium mb-4 flex items-center text-gray-800">
-                        <div className="w-10 h-10 rounded-full bg-accent-100 flex items-center justify-center mr-3 text-accent-500">
-                          <i className="fas fa-vector-square"></i>
-                        </div>
-                        Feature Extraction
-                        <Tooltip tip="Extracted features like colors, patterns, and textures">
-                          <button type="button" className="ml-2 text-gray-400 hover:text-primary-500 transition-colors">
-                            <i className="fas fa-info-circle text-sm"></i>
-                          </button>
-                        </Tooltip>
-                      </h3>
-                      <div className="bg-gray-50 p-4 rounded-lg">{displayFeatures(results.detections)}</div>
-                    </div>
-                  </div>
+              {/* Show error message on results tab too */}
+              {error && (
+                <div className="mb-8 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-5xl mx-auto animate-fadeIn">
+                  <p className="font-medium flex items-center text-lg">
+                    <i className={`mr-2 ${
+                      error.includes("Fashion is meant to be shared") ? "fas fa-users" : 
+                      error.includes("invisible") ? "fas fa-user-slash" : 
+                      "fas fa-exclamation-triangle"
+                    }`} />
+                    {error.includes("Fashion is meant to be shared") ? "Multiple People Detected" : 
+                     error.includes("invisible") ? "No Person Detected" : 
+                     "Warning"}
+                  </p>
+                  <p className="mt-2">{error}</p>
                   
-                  <div className="flex justify-center mt-12 mb-4">
-                    <button
-                      onClick={() => openRecoModal()}
-                      className="px-6 py-3 bg-gradient-to-r from-secondary-500 to-primary-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 flex items-center"
+                  <div className="mt-4 flex justify-end">
+                    <button 
+                      onClick={() => setError('')}
+                      className="px-4 py-2 bg-white text-red-600 rounded-full text-sm hover:bg-red-100 transition-colors flex items-center"
                     >
-                      <i className="fas fa-magic mr-2"></i>
-                      Get Fashion Recommendations
+                      <i className="fas fa-times mr-2"></i>
+                      Dismiss
                     </button>
                   </div>
                 </div>
               )}
+
+              {extractAndRenderResults()}
             </div>
           )}
         </div>
