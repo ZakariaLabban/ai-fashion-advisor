@@ -208,46 +208,45 @@ function VirtualTryOn() {
     } catch (err) {
       console.error('Error processing virtual try-on:', err)
       
-      // Handle specific error cases related to person detection
-      if (err.response && err.response.status === 400) {
-        const errorMessage = err.response.data.detail || err.response.data.message || err.message
-        
-        // Clean up error message by removing technical prefixes (for both 400 and 500 errors)
-        let cleanErrorMessage = errorMessage;
-        if (cleanErrorMessage.includes(":")) {
-          // Get the last part after the last colon
-          const colonIndex = cleanErrorMessage.lastIndexOf(":");
-          if (colonIndex !== -1) {
-            cleanErrorMessage = cleanErrorMessage.substring(colonIndex + 1).trim();
-          }
-        }
-        
-        // More user-friendly error messages based on the error content
-        if (cleanErrorMessage.includes("social person") || cleanErrorMessage.includes("need a picture of you alone")) {
-          setError("We detected multiple people in your photo. For the best try-on experience, please upload a photo with just you in it.")
-        } else if (cleanErrorMessage.includes("couldn't detect anyone") || cleanErrorMessage.includes("provide a clear photo")) {
-          setError("We couldn't detect a person in your photo. Please upload a clear, full-body photo of yourself.")
-        } else {
-          setError(`${cleanErrorMessage}`)
-        }
-      } else if (err.response && err.response.status === 500) {
-        // Extract the specific error message from the server response for 500 errors
-        const serverErrorMessage = err.response.data.detail || err.response.data.message || err.response.data.error || "Unknown server error"
-        
-        // Clean up error message by removing technical prefixes
-        let cleanErrorMessage = serverErrorMessage;
-        // Remove technical prefixes like "Virtual try-on processing failed: 400:"
-        if (cleanErrorMessage.includes(":")) {
-          // Get the last part after the last colon
-          const colonIndex = cleanErrorMessage.lastIndexOf(":");
-          if (colonIndex !== -1) {
-            cleanErrorMessage = cleanErrorMessage.substring(colonIndex + 1).trim();
-          }
-        }
-        
-        setError(`${cleanErrorMessage}`)
+      // Extract error message from response or use generic fallback
+      let errorMessage = '';
+      if (err.response) {
+        // Get raw error message from response
+        errorMessage = err.response.data.detail || err.response.data.message || err.response.data.error || err.message;
       } else {
-        setError(`Error processing virtual try-on: ${err.message}`)
+        errorMessage = err.message || 'An unknown error occurred';
+      }
+      
+      console.log('Raw error message:', errorMessage);
+      
+      // Directly handle the known error cases without complex parsing
+      if (errorMessage.includes('social person') || errorMessage.includes('need a picture of you alone')) {
+        // Multiple people detected
+        setError("We detected multiple people in your photo. For the best try-on experience, please upload a photo with just you in it.");
+      } else if (errorMessage.includes("couldn't detect anyone") || errorMessage.includes("provide a clear photo")) {
+        // No person detected
+        setError("We couldn't detect a person in your photo. Please upload a clear, full-body photo of yourself.");
+      } else {
+        // For all other errors, clean up the message by removing technical prefixes
+        let cleanMessage = errorMessage;
+        
+        // Remove specific known prefixes
+        const prefixesToRemove = [
+          "Server error: ",
+          "Virtual try-on processing failed: ",
+          "400: ",
+          "500: "
+        ];
+        
+        // Remove each prefix if found
+        prefixesToRemove.forEach(prefix => {
+          if (cleanMessage.includes(prefix)) {
+            cleanMessage = cleanMessage.replace(prefix, '');
+          }
+        });
+        
+        // Set the cleaned error message
+        setError(cleanMessage.trim());
       }
       
       setProgressStatus('')
