@@ -170,7 +170,12 @@ def calculate_color_harmony(top_colors, bottom_colors):
     if is_top_neutral and is_bottom_neutral:
         # Two neutrals - check contrast
         contrast_diff = abs(top_v - bottom_v)
-        neutral_score = contrast_diff * 100  # Higher contrast is better for neutrals
+        
+        # Special case: Very low contrast between neutrals - increase score
+        if contrast_diff < 0.1:  # For cases with "0% contrast" or very low contrast
+            neutral_score = 85  # Increased from the original calculation to favor this case
+        else:
+            neutral_score = contrast_diff * 100  # Higher contrast is better for neutrals
     elif is_top_neutral or is_bottom_neutral:
         # One neutral with a color usually works well
         neutral_score = 80
@@ -182,9 +187,12 @@ def calculate_color_harmony(top_colors, bottom_colors):
     brightness_score = max(50, min(100, brightness_diff * 200))  # Some contrast is good
     
     # Calculate final harmony score
-    if is_top_neutral or is_bottom_neutral:
-        harmony_score = 0.6 * neutral_score + 0.4 * brightness_score
-    else:
+    if is_top_neutral and is_bottom_neutral:
+        if brightness_diff < 0.1:  # For the very low contrast case
+            harmony_score = neutral_score  # Use the increased neutral score directly
+        else:
+            harmony_score = 0.6 * neutral_score + 0.4 * brightness_score
+    elif is_top_neutral or is_bottom_neutral:
         # Check for complementary, analogous, or monochromatic
         if 150 <= hue_diff <= 210:  # Near complementary
             harmony_score = 0.6 * complementary_score + 0.4 * brightness_score
@@ -199,7 +207,10 @@ def calculate_color_harmony(top_colors, bottom_colors):
     
     # Generate analysis text
     if is_top_neutral and is_bottom_neutral:
-        color_analysis = f"Neutral color pairing with {brightness_diff:.0%} contrast."
+        if brightness_diff < 0.1:
+            color_analysis = f"Elegant neutral-on-neutral pairing creating a sophisticated monochromatic look."
+        else:
+            color_analysis = f"Neutral color pairing with {brightness_diff:.0%} contrast."
     elif is_top_neutral:
         color_analysis = f"Neutral top with {get_color_family(bottom_primary)} bottom creates a balanced look."
     elif is_bottom_neutral:
