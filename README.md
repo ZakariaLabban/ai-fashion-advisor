@@ -357,6 +357,3 @@ This project uses the following technologies and services:
 - [Qdrant](https://qdrant.tech/) for vector similarity search
 - [Google Drive API](https://developers.google.com/drive) for image storage
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 
