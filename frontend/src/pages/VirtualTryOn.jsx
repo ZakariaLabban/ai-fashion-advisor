@@ -220,6 +220,10 @@ function VirtualTryOn() {
         } else {
           setError(`${errorMessage}`)
         }
+      } else if (err.response && err.response.status === 500) {
+        // Extract the specific error message from the server response for 500 errors
+        const serverErrorMessage = err.response.data.detail || err.response.data.message || err.response.data.error || "Unknown server error"
+        setError(`Server error: ${serverErrorMessage}`)
       } else {
         setError(`Error processing virtual try-on: ${err.message}`)
       }
