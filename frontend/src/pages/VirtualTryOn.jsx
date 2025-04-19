@@ -223,7 +223,19 @@ function VirtualTryOn() {
       } else if (err.response && err.response.status === 500) {
         // Extract the specific error message from the server response for 500 errors
         const serverErrorMessage = err.response.data.detail || err.response.data.message || err.response.data.error || "Unknown server error"
-        setError(`Server error: ${serverErrorMessage}`)
+        
+        // Clean up error message by removing technical prefixes
+        let cleanErrorMessage = serverErrorMessage;
+        // Remove technical prefixes like "Virtual try-on processing failed: 400:"
+        if (cleanErrorMessage.includes(":")) {
+          // Get the last part after the last colon
+          const colonIndex = cleanErrorMessage.lastIndexOf(":");
+          if (colonIndex !== -1) {
+            cleanErrorMessage = cleanErrorMessage.substring(colonIndex + 1).trim();
+          }
+        }
+        
+        setError(`${cleanErrorMessage}`)
       } else {
         setError(`Error processing virtual try-on: ${err.message}`)
       }
