@@ -318,12 +318,24 @@ function Analyze() {
 
       if (err.response) {
         console.log('Error response:', err.response)
-        if (err.response.status === 500) {
-          errorMessage = "Oops! Our fashion AI had a wardrobe malfunction. It's not you, it's us. Our server is having a bad hair day!"
-        } else if (err.response.status === 400) {
-          errorMessage = "Hmm, that image is giving our AI fashionista a headache. It might be too avant-garde for our current algorithm!"
-        } else if (err.response.status === 413) {
-          errorMessage = "That image is too fabulous (or too large)! Please try a smaller file size - even supermodels need to diet sometimes."
+        
+        // Check for multiple people or no person detected errors in the error response
+        if (err.response.data) {
+          const errorData = typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data);
+          
+          if (errorData.includes('multiple people') || errorData.includes('Multiple people')) {
+            errorMessage = "Whoa there, social butterfly! Our AI is getting a crowd phobia trying to analyze all those people. For the best results, please upload a photo with just one fabulous outfit at a time. Let's keep this a solo fashion show!"
+          } else if (errorData.includes('no person') || errorData.includes('No person') || errorData.includes("couldn't detect a person")) {
+            errorMessage = "Um, hello? Is anybody there? Our AI couldn't find anyone in this photo! Please upload a clear picture with a person wearing the outfit - unless you're trying to showcase invisible fashion, which is... bold, but hard to analyze."
+          } else if (err.response.status === 500) {
+            errorMessage = "Oops! Our fashion AI had a wardrobe malfunction. It's not you, it's us. Our server is having a bad hair day!"
+          } else if (err.response.status === 400) {
+            errorMessage = "Hmm, that image is giving our AI fashionista a headache. It might be too avant-garde for our current algorithm!"
+          } else if (err.response.status === 413) {
+            errorMessage = "That image is too fabulous (or too large)! Please try a smaller file size - even supermodels need to diet sometimes."
+          } else {
+            errorMessage = `Fashion emergency! Error code: ${err.response.status}. Our digital stylist is temporarily out of service.`
+          }
         } else {
           errorMessage = `Fashion emergency! Error code: ${err.response.status}. Our digital stylist is temporarily out of service.`
         }
@@ -1304,24 +1316,102 @@ function Analyze() {
               {error && (
                 <div className="mt-8 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 max-w-2xl mx-auto animate-fadeIn">
                   <p className="font-medium flex items-center text-lg">
-                    <i className="fas fa-exclamation-triangle mr-2" />
-                    Oops! Fashion Faux Pas Alert!
+                    <i className={`mr-2 ${
+                      error.includes("social butterfly") ? "fas fa-users" : 
+                      error.includes("anybody there") ? "fas fa-user-slash" : 
+                      "fas fa-exclamation-triangle"
+                    }`} />
+                    {error.includes("social butterfly") ? "Multiple People Detected" : 
+                     error.includes("anybody there") ? "No Person Detected" : 
+                     "Oops! Fashion Faux Pas Alert!"}
                   </p>
                   <p className="mt-2">{error}</p>
+                  
+                  {/* Visual indicator for multiple people */}
+                  {error.includes("social butterfly") && (
+                    <div className="flex justify-center my-3">
+                      <div className="relative bg-red-100 p-4 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center text-red-500">
+                            <i className="fas fa-user text-xl"></i>
+                          </div>
+                          <div className="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center text-red-500 -ml-6">
+                            <i className="fas fa-user text-xl"></i>
+                          </div>
+                          <div className="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center text-red-500 -ml-6">
+                            <i className="fas fa-user text-xl"></i>
+                          </div>
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="bg-red-100 text-red-600 font-bold text-4xl">
+                            <i className="fas fa-ban"></i>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Visual indicator for no person */}
+                  {error.includes("anybody there") && (
+                    <div className="flex justify-center my-3">
+                      <div className="bg-red-100 p-4 rounded-lg flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center text-red-300 border-2 border-dashed border-red-300">
+                          <i className="fas fa-user-slash text-xl"></i>
+                        </div>
+                        <div className="text-red-500">
+                          <i className="fas fa-search text-xl mr-2"></i>
+                          <span className="font-medium">Person not found</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="mt-4 p-3 bg-white rounded-lg border border-red-100 text-gray-700">
                     <p className="font-medium flex items-center mb-2">
                       <i className="fas fa-lightbulb text-yellow-500 mr-2" />
                       Fashion Tip:
                     </p>
-                    <p className="text-sm">
-                      Even supermodels have bad photo days! Try uploading a clearer image, or as fashion icon Tim Gunn would say, "Make it work!" 
-                      Our AI works best with well-lit, uncluttered images of clothing items.
-                    </p>
+                    
+                    {error.includes("social butterfly") ? (
+                      <p className="text-sm">
+                        For best results, take a photo with just you in frame, preferably against a simple background.
+                        Group photos are great for Instagram, but our AI works best one-on-one!
+                      </p>
+                    ) : error.includes("anybody there") ? (
+                      <p className="text-sm">
+                        Make sure you're clearly visible in the frame. Good lighting helps our AI see you better!
+                        Full-body shots work best for complete outfit analysis.
+                      </p>
+                    ) : (
+                      <p className="text-sm">
+                        Even supermodels have bad photo days! Try uploading a clearer image, or as fashion icon Tim Gunn would say, "Make it work!" 
+                        Our AI works best with well-lit, uncluttered images of clothing items.
+                      </p>
+                    )}
                   </div>
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex justify-between">
+                    {error.includes("social butterfly") && (
+                      <button
+                        onClick={() => setActiveTab('upload')}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm hover:bg-blue-600 transition-colors flex items-center"
+                      >
+                        <i className="fas fa-image mr-2"></i>
+                        Try Another Photo
+                      </button>
+                    )}
+                    {error.includes("anybody there") && (
+                      <button
+                        onClick={() => setActiveTab('upload')}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm hover:bg-blue-600 transition-colors flex items-center"
+                      >
+                        <i className="fas fa-redo mr-2"></i>
+                        Try With Better Lighting
+                      </button>
+                    )}
+                    
                     <button 
                       onClick={() => setError('')}
-                      className="px-4 py-2 bg-white text-red-600 rounded-full text-sm hover:bg-red-100 transition-colors flex items-center"
+                      className="px-4 py-2 bg-white text-red-600 rounded-full text-sm hover:bg-red-100 transition-colors flex items-center ml-auto"
                     >
                       <i className="fas fa-times mr-2"></i>
                       Dismiss
