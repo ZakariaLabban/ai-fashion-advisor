@@ -212,13 +212,23 @@ function VirtualTryOn() {
       if (err.response && err.response.status === 400) {
         const errorMessage = err.response.data.detail || err.response.data.message || err.message
         
+        // Clean up error message by removing technical prefixes (for both 400 and 500 errors)
+        let cleanErrorMessage = errorMessage;
+        if (cleanErrorMessage.includes(":")) {
+          // Get the last part after the last colon
+          const colonIndex = cleanErrorMessage.lastIndexOf(":");
+          if (colonIndex !== -1) {
+            cleanErrorMessage = cleanErrorMessage.substring(colonIndex + 1).trim();
+          }
+        }
+        
         // More user-friendly error messages based on the error content
-        if (errorMessage.includes("social person") || errorMessage.includes("need a picture of you alone")) {
+        if (cleanErrorMessage.includes("social person") || cleanErrorMessage.includes("need a picture of you alone")) {
           setError("We detected multiple people in your photo. For the best try-on experience, please upload a photo with just you in it.")
-        } else if (errorMessage.includes("couldn't detect anyone") || errorMessage.includes("provide a clear photo")) {
+        } else if (cleanErrorMessage.includes("couldn't detect anyone") || cleanErrorMessage.includes("provide a clear photo")) {
           setError("We couldn't detect a person in your photo. Please upload a clear, full-body photo of yourself.")
         } else {
-          setError(`${errorMessage}`)
+          setError(`${cleanErrorMessage}`)
         }
       } else if (err.response && err.response.status === 500) {
         // Extract the specific error message from the server response for 500 errors
