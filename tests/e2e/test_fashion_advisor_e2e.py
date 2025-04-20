@@ -365,96 +365,53 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
         try:
             print("\n--- Step 4: Testing Virtual Try-On ---")
             
-            # First, check the API documentation to verify the expected format
-            # The error suggests there's an issue with how we're formatting the request
-            
-            # Convert images to base64 for safe transport
+            # The virtual try-on service expects base64-encoded images in a JSON request
+            # Convert images to base64 for the request
             model_image_b64 = base64.b64encode(person_image_data).decode('utf-8')
             garment_image_b64 = base64.b64encode(top_image_data).decode('utf-8')
             
-            # Try the API endpoint first, which usually expects JSON
-            tryon_api_response = await async_httpx_client.post(
-                f"{VIRTUAL_TRYON_SERVICE_URL}/api/tryon",
-                json={
-                    "model_image_data": model_image_b64,
-                    "garment_image_data": garment_image_b64,
-                    "category": "upper_body",
-                    "mode": "quality"
-                },
+            # Send a request using the format defined in the TryOnRequest Pydantic model
+            try_on_request = {
+                "model_image_data": model_image_b64,
+                "garment_image_data": garment_image_b64,
+                "category": "auto",
+                "mode": "quality"
+            }
+            
+            print("Sending try-on request to virtual try-on service...")
+            tryon_response = await async_httpx_client.post(
+                f"{VIRTUAL_TRYON_SERVICE_URL}/tryon",
+                json=try_on_request,
                 timeout=120.0  # Virtual try-on can take longer
             )
             
-            print(f"Try-on API response status: {tryon_api_response.status_code}")
+            print(f"Try-on response status: {tryon_response.status_code}")
             
-            if tryon_api_response.status_code == 200:
-                # Try to parse response and save the result image
+            if tryon_response.status_code == 200:
                 try:
-                    tryon_api_data = tryon_api_response.json()
+                    tryon_data = tryon_response.json()
                     
-                    if "image_data" in tryon_api_data:
-                        tryon_image_bytes = base64.b64decode(tryon_api_data["image_data"])
-                        tryon_filename = f"e2e_tryon_api_{int(time.time())}.jpg"
+                    # The response should include base64-encoded result image
+                    if "result_image_data" in tryon_data:
+                        tryon_image_bytes = base64.b64decode(tryon_data["result_image_data"])
+                        tryon_filename = f"e2e_tryon_{int(time.time())}.jpg"
                         save_test_image(tryon_image_bytes, tryon_filename)
-                        print(f"Saved API try-on result image: {tryon_filename}")
+                        print(f"Saved try-on result image: {tryon_filename}")
                     else:
-                        print("No image data in API try-on response")
-                except Exception as e:
-                    print(f"Warning: Could not process API try-on result: {str(e)}")
-            else:
-                print(f"API try-on request failed with status {tryon_api_response.status_code}")
-                
-                # If the API endpoint failed, try the form-based endpoint with explicit separated form fields
-                try:
-                    # For form-based endpoint, use strictly separate form data and files
-                    form_data = aiohttp.FormData()
-                    form_data.add_field('category', 'upper_body')
-                    form_data.add_field('mode', 'quality')
-                    form_data.add_field('model_image', 
-                                        person_image_data, 
-                                        filename='model.jpg', 
-                                        content_type='image/jpeg')
-                    form_data.add_field('garment_image', 
-                                        top_image_data, 
-                                        filename='garment.jpg', 
-                                        content_type='image/jpeg')
+                        print("No result_image_data in try-on response")
                     
-                    # Use aiohttp client for better form handling
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            f"{VIRTUAL_TRYON_SERVICE_URL}/tryon",
-                            data=form_data,
-                            timeout=120.0
-                        ) as tryon_form_response:
-                            print(f"Form-based try-on response status: {tryon_form_response.status}")
-                            
-                            if tryon_form_response.status == 200:
-                                # Check content type to determine how to process response
-                                content_type = tryon_form_response.headers.get('Content-Type', '')
-                                
-                                if 'image/jpeg' in content_type:
-                                    # Direct image response
-                                    tryon_form_bytes = await tryon_form_response.read()
-                                    tryon_form_filename = f"e2e_tryon_form_{int(time.time())}.jpg"
-                                    save_test_image(tryon_form_bytes, tryon_form_filename)
-                                    print(f"Saved form-based try-on result image: {tryon_form_filename}")
-                                elif 'application/json' in content_type:
-                                    # JSON response with base64-encoded image
-                                    tryon_form_data = await tryon_form_response.json()
-                                    if "image_data" in tryon_form_data:
-                                        tryon_form_bytes = base64.b64decode(tryon_form_data["image_data"])
-                                        tryon_form_filename = f"e2e_tryon_form_{int(time.time())}.jpg"
-                                        save_test_image(tryon_form_bytes, tryon_form_filename)
-                                        print(f"Saved form-based try-on result image: {tryon_form_filename}")
-                                    else:
-                                        print("No image data in form-based try-on response")
-                                else:
-                                    print(f"Unexpected form-based try-on response content type: {content_type}")
-                            else:
-                                error_text = await tryon_form_response.text()
-                                print(f"Form-based try-on request failed: {error_text[:500]}")
+                    # Display additional info from the response
+                    if "details" in tryon_data:
+                        details = tryon_data["details"]
+                        print(f"Try-on details: status={details.get('status', 'unknown')}, "
+                              f"category={details.get('category', 'unknown')}, "
+                              f"mode={details.get('mode', 'unknown')}")
                 except Exception as e:
-                    print(f"Form-based try-on attempt failed: {str(e)}")
-                
+                    print(f"Error processing try-on response: {str(e)}")
+                    print(f"Response content: {tryon_response.text[:500]}")
+            else:
+                print(f"Try-on request failed with status {tryon_response.status_code}")
+                print(f"Response content: {tryon_response.text[:500]}")
         except Exception as e:
             print(f"Virtual try-on test failed: {str(e)}")
     else:
@@ -465,96 +422,53 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
         try:
             print("\n--- Step 5: Testing Multi-garment Virtual Try-On ---")
             
-            # Convert images to base64 for safe transport
+            # The multi-garment try-on service also expects base64-encoded images in a JSON request
             model_image_b64 = base64.b64encode(person_image_data).decode('utf-8')
             top_image_b64 = base64.b64encode(top_image_data).decode('utf-8')
             bottom_image_b64 = base64.b64encode(bottom_image_data).decode('utf-8')
             
-            # Try API endpoint with JSON first
-            multi_tryon_api_response = await async_httpx_client.post(
-                f"{VIRTUAL_TRYON_SERVICE_URL}/api/tryon/multi",
-                json={
-                    "model_image_data": model_image_b64,
-                    "top_image_data": top_image_b64,
-                    "bottom_image_data": bottom_image_b64,
-                    "mode": "quality"
-                },
-                timeout=180.0  # Multi-garment try-on can take even longer
+            # Send a request using the format defined in the MultiTryOnRequest Pydantic model
+            multi_tryon_request = {
+                "model_image_data": model_image_b64,
+                "top_image_data": top_image_b64,
+                "bottom_image_data": bottom_image_b64,
+                "mode": "quality"
+            }
+            
+            print("Sending multi-garment try-on request...")
+            multi_tryon_response = await async_httpx_client.post(
+                f"{VIRTUAL_TRYON_SERVICE_URL}/tryon/multi",
+                json=multi_tryon_request,
+                timeout=180.0  # Multi-garment try-on can take longer
             )
             
-            print(f"Multi-garment API try-on response status: {multi_tryon_api_response.status_code}")
+            print(f"Multi-garment try-on response status: {multi_tryon_response.status_code}")
             
-            if multi_tryon_api_response.status_code == 200:
+            if multi_tryon_response.status_code == 200:
                 try:
-                    multi_tryon_api_data = multi_tryon_api_response.json()
+                    multi_tryon_data = multi_tryon_response.json()
                     
-                    if "image_data" in multi_tryon_api_data:
-                        multi_tryon_image_bytes = base64.b64decode(multi_tryon_api_data["image_data"])
-                        multi_tryon_filename = f"e2e_multi_tryon_api_{int(time.time())}.jpg"
+                    # The response should include base64-encoded result image
+                    if "final_result_data" in multi_tryon_data:
+                        multi_tryon_image_bytes = base64.b64decode(multi_tryon_data["final_result_data"])
+                        multi_tryon_filename = f"e2e_multi_tryon_{int(time.time())}.jpg"
                         save_test_image(multi_tryon_image_bytes, multi_tryon_filename)
-                        print(f"Saved multi-garment API try-on result image: {multi_tryon_filename}")
+                        print(f"Saved multi-garment try-on result image: {multi_tryon_filename}")
                     else:
-                        print("No image data in multi-garment API try-on response")
+                        print("No final_result_data in multi-garment try-on response")
+                    
+                    # Display additional info from the response
+                    if "details" in multi_tryon_data:
+                        details = multi_tryon_data["details"]
+                        print(f"Multi-garment try-on details: status={details.get('status', 'unknown')}, "
+                              f"top_processed={details.get('top_processed', False)}, "
+                              f"bottom_processed={details.get('bottom_processed', False)}")
                 except Exception as e:
-                    print(f"Warning: Could not process multi-garment API try-on result: {str(e)}")
+                    print(f"Error processing multi-garment try-on response: {str(e)}")
+                    print(f"Response content: {multi_tryon_response.text[:500]}")
             else:
-                print(f"Multi-garment API try-on request failed with status {multi_tryon_api_response.status_code}")
-                
-                # If API endpoint failed, try form-based endpoint
-                try:
-                    # For form-based endpoint, use strictly separate form data and files
-                    form_data = aiohttp.FormData()
-                    form_data.add_field('mode', 'quality')
-                    form_data.add_field('model_image', 
-                                        person_image_data, 
-                                        filename='model.jpg', 
-                                        content_type='image/jpeg')
-                    form_data.add_field('top_image', 
-                                        top_image_data, 
-                                        filename='top.jpg', 
-                                        content_type='image/jpeg')
-                    form_data.add_field('bottom_image', 
-                                        bottom_image_data, 
-                                        filename='bottom.jpg', 
-                                        content_type='image/jpeg')
-                    
-                    # Use aiohttp client for better form handling
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            f"{VIRTUAL_TRYON_SERVICE_URL}/tryon/multi",
-                            data=form_data,
-                            timeout=180.0
-                        ) as multi_tryon_form_response:
-                            print(f"Form-based multi-garment try-on response status: {multi_tryon_form_response.status}")
-                            
-                            if multi_tryon_form_response.status == 200:
-                                # Check content type to determine how to process response
-                                content_type = multi_tryon_form_response.headers.get('Content-Type', '')
-                                
-                                if 'image/jpeg' in content_type:
-                                    # Direct image response
-                                    multi_tryon_form_bytes = await multi_tryon_form_response.read()
-                                    multi_tryon_form_filename = f"e2e_multi_tryon_form_{int(time.time())}.jpg"
-                                    save_test_image(multi_tryon_form_bytes, multi_tryon_form_filename)
-                                    print(f"Saved form-based multi-garment try-on result image: {multi_tryon_form_filename}")
-                                elif 'application/json' in content_type:
-                                    # JSON response with base64-encoded image
-                                    multi_tryon_form_data = await multi_tryon_form_response.json()
-                                    if "image_data" in multi_tryon_form_data:
-                                        multi_tryon_form_bytes = base64.b64decode(multi_tryon_form_data["image_data"])
-                                        multi_tryon_form_filename = f"e2e_multi_tryon_form_{int(time.time())}.jpg"
-                                        save_test_image(multi_tryon_form_bytes, multi_tryon_form_filename)
-                                        print(f"Saved form-based multi-garment try-on result image: {multi_tryon_form_filename}")
-                                    else:
-                                        print("No image data in form-based multi-garment try-on response")
-                                else:
-                                    print(f"Unexpected form-based multi-garment try-on response content type: {content_type}")
-                            else:
-                                error_text = await multi_tryon_form_response.text()
-                                print(f"Form-based multi-garment try-on request failed: {error_text[:500]}")
-                except Exception as e:
-                    print(f"Form-based multi-garment try-on attempt failed: {str(e)}")
-                    
+                print(f"Multi-garment try-on request failed with status {multi_tryon_response.status_code}")
+                print(f"Response content: {multi_tryon_response.text[:500]}")
         except Exception as e:
             print(f"Multi-garment virtual try-on test failed: {str(e)}")
     else:
