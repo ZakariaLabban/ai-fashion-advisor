@@ -366,11 +366,21 @@ async def test_live_recommendation_flow(async_httpx_client):
         request_id = analyze_data.get("request_id")
         detection_id = 0  # First detection
         
+        # Determine the item type based on class name
+        class_name = item.get("class_name", "").lower()
+        if "shirt" in class_name or "top" in class_name or "tshirt" in class_name or "jacket" in class_name:
+            item_type = "topwear"
+        elif "pant" in class_name or "short" in class_name or "jean" in class_name or "skirt" in class_name:
+            item_type = "bottomwear"
+        else:
+            item_type = "accessory"
+        
         # Prepare the recommendation request
         recommendation_request = {
             "request_id": request_id,
             "detection_id": str(detection_id),
-            "operation": "similarity"  # or "matching"
+            "operation": "similarity",  # or "matching"
+            "item_type": item_type
         }
         
         print(f"Recommendation request: {recommendation_request}")
@@ -390,18 +400,27 @@ async def test_live_recommendation_flow(async_httpx_client):
                 recommendation_data = recommendation_response.json()
                 print(f"Recommendation response (truncated): {str(recommendation_data)[:500]}...")
                 
-                # Check structure
-                assert "request_id" in recommendation_data, "Response missing request_id field"
+                # Check structure based on the actual API implementation
+                assert "image_data" in recommendation_data, "Response missing image_data field"
+                assert "content_type" in recommendation_data, "Response missing content_type field"
                 
-                # If we have recommendations, check their structure
-                if "recommendations" in recommendation_data:
-                    rec_count = len(recommendation_data["recommendations"])
-                    assert rec_count > 0, "No recommendations returned"
-                    print(f"Received {rec_count} recommendations")
+                # Verify the content_type is as expected
+                assert recommendation_data["content_type"] == "image/jpeg", "Unexpected content_type"
+                
+                # Verify the image_data is a non-empty base64 string
+                assert recommendation_data["image_data"], "Empty image_data in response"
+                
+                # Try to decode the base64 data to verify it's valid
+                try:
+                    image_bytes = base64.b64decode(recommendation_data["image_data"])
+                    print(f"Successfully decoded image data, size: {len(image_bytes)} bytes")
                     
-                    # Print the first recommendation
-                    if rec_count > 0:
-                        print(f"First recommendation: {recommendation_data['recommendations'][0]}")
+                    # Save the image for inspection if needed
+                    result_filename = f"recommendation_result_{int(time.time())}.jpg"
+                    save_test_image(image_bytes, result_filename)
+                    print(f"Saved recommendation result as {result_filename}")
+                except Exception as e:
+                    print(f"Failed to decode base64 image data: {str(e)}")
             else:
                 print(f"Recommendation error: {recommendation_response.text[:1000]}")
                 pytest.skip(f"Recommendation endpoint returned error: {recommendation_response.status_code}")
