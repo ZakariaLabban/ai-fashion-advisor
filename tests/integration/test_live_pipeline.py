@@ -267,17 +267,11 @@ async def test_live_analyze_pipeline(async_httpx_client):
             print(f"Failed to download fallback image: {str(e2)}")
             pytest.skip("Could not download test image")
     
-    # Encode the image for the request
-    image_base64 = base64.b64encode(person_image).decode('utf-8')
-    
-    # Prepare the request - based on review of the EEP service
-    request_data = {
-        "image": image_base64,
-        "analyze_options": {
-            "detect_clothes": True,
-            "classify_style": True,
-            "extract_features": True
-        }
+    # Prepare the file upload for the /api/analyze endpoint
+    # The endpoint expects a 'file' parameter with the image data
+    print(f"Person image size: {len(person_image)} bytes")
+    files = {
+        'file': ('person.jpg', person_image, 'image/jpeg')
     }
     
     # Make the request to the analyze endpoint
@@ -285,7 +279,7 @@ async def test_live_analyze_pipeline(async_httpx_client):
         print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/api/analyze")
         response = await async_httpx_client.post(
             f"{EEP_SERVICE_URL}/api/analyze",
-            json=request_data,
+            files=files,
             timeout=60.0  # Increased timeout as image processing can take time
         )
         print(f"EEP analyze response status: {response.status_code}")
@@ -297,28 +291,38 @@ async def test_live_analyze_pipeline(async_httpx_client):
         
         data = response.json()
         
-        # Print response for debugging
-        print(f"EEP analyze response: {data}")
+        # Print first part of response for debugging
+        print(f"EEP analyze response (truncated): {str(data)[:500]}...")
         
-        # Check structure of the response
+        # Check structure of the response based on AnalysisResponse model
         assert "request_id" in data, "Response missing request_id field"
-        assert "detected_items" in data, "Response missing detected_items field"
+        assert "detections" in data, "Response missing detections field"
+        assert "original_image_path" in data, "Response missing original_image_path field"
+        assert "processing_time" in data, "Response missing processing_time field"
+        assert "timestamp" in data, "Response missing timestamp field"
         
-        # Check detected items
-        if not data["detected_items"]:
+        # Check if we have detections
+        if not data["detections"]:
             print("No items detected in the image")
             pytest.skip("No items detected in the image - test image may not contain recognizable clothing")
         
-        print(f"Detected {len(data['detected_items'])} items in the image")
+        # Print detection info
+        print(f"Detected {len(data['detections'])} items in the image")
+        for i, item in enumerate(data["detections"]):
+            item_class = item.get("class_name", item.get("category", "unknown"))
+            item_confidence = item.get("confidence", 0)
+            print(f"Item {i+1}: {item_class} (confidence: {item_confidence})")
+            assert "class_name" in item or "category" in item, f"Item {i+1} missing class_name/category field"
+            
+        # Store the request_id for later use in recommendation testing
+        print(f"Analysis request_id: {data['request_id']}")
         
-        # Check that each item has basic information
-        for i, item in enumerate(data["detected_items"]):
-            print(f"Item {i+1}: {item.get('category', 'unknown')}")
-            assert "category" in item, f"Item {i+1} missing category field"
-            # Note: We're not asserting style or features since they might not be available for all items
+        # Return the response data so it can be used by other tests
+        return data
     except Exception as e:
         print(f"EEP analyze request failed: {str(e)}")
         pytest.skip(f"EEP analyze request failed: {str(e)}")
+        return None
 
 @pytest.mark.asyncio
 async def test_live_recommendation_flow(async_httpx_client):
@@ -343,111 +347,68 @@ async def test_live_recommendation_flow(async_httpx_client):
     
     # First step: Call the analyze endpoint with a person image
     try:
-        # Try to load existing person images from the test directory
-        person_files = list(TEST_IMAGES_DIR.glob("*person*.jpg"))
-        if not person_files:
-            pytest.skip("No person test images available - run the analyze pipeline test first")
+        # Get analysis data by calling the analyze test
+        analyze_data = await test_live_analyze_pipeline(async_httpx_client)
         
-        # Use a random person image from existing files
-        person_image_path = random.choice(person_files)
-        print(f"Using person image for recommendation flow: {person_image_path.name}")
-        
-        with open(person_image_path, "rb") as f:
-            person_image = f.read()
-        
-        # Encode the image for the request
-        image_base64 = base64.b64encode(person_image).decode('utf-8')
-        
-        # Prepare the analyze request
-        analyze_request = {
-            "image": image_base64,
-            "analyze_options": {
-                "detect_clothes": True,
-                "classify_style": True,
-                "extract_features": True
-            }
-        }
-        
-        # Call the analyze endpoint
-        print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/api/analyze")
-        analyze_response = await async_httpx_client.post(
-            f"{EEP_SERVICE_URL}/api/analyze",
-            json=analyze_request,
-            timeout=60.0
-        )
-        
-        if analyze_response.status_code != 200:
-            print(f"EEP analyze error: {analyze_response.text[:1000]}")
-            pytest.skip(f"Analyze endpoint returned error: {analyze_response.status_code}")
-        
-        analyze_data = analyze_response.json()
-        print(f"Analyze response: {analyze_data}")
+        if not analyze_data:
+            pytest.skip("Could not get analysis data from the analyze test")
         
         # Check if we have detected items
-        if not analyze_data.get("detected_items", []):
+        if not analyze_data.get("detections", []):
             pytest.skip("No items detected in the image")
         
         # Second step: Call the recommend endpoint with the analysis results
         # Get the first detected item
-        item = analyze_data["detected_items"][0]
+        item = analyze_data["detections"][0]
         print(f"Using item for recommendation: {item}")
         
-        # Extract the style, category, and feature vector for the recommendation
-        style = "Casual"  # Default
-        if "style" in item and isinstance(item["style"], dict) and "name" in item["style"]:
-            style = item["style"]["name"]
-        
-        category = item.get("category", "top")  # Default to top if not found
-        
-        vector = [0.1] * 5  # Default vector
-        if "features" in item and isinstance(item["features"], dict) and "vector" in item["features"]:
-            vector = item["features"]["vector"]
+        # Get the request_id and detection_id for the recommendation
+        request_id = analyze_data.get("request_id")
+        detection_id = 0  # First detection
         
         # Prepare the recommendation request
         recommendation_request = {
-            "gender": "unisex",
-            "style": style,
-            "category": category,
-            "vector": vector
+            "request_id": request_id,
+            "detection_id": str(detection_id),
+            "operation": "similarity"  # or "matching"
         }
         
         print(f"Recommendation request: {recommendation_request}")
         
-        # Try different recommend endpoint paths
-        recommend_endpoints = ["/api/recommend", "/recommend", "/api/v1/recommend"]
-        for endpoint in recommend_endpoints:
-            try:
-                print(f"Trying recommendation endpoint: {EEP_SERVICE_URL}{endpoint}")
-                recommendation_response = await async_httpx_client.post(
-                    f"{EEP_SERVICE_URL}{endpoint}",
-                    json=recommendation_request,
-                    timeout=60.0
-                )
+        # Try recommendation endpoint
+        try:
+            print(f"Calling recommendation endpoint: {EEP_SERVICE_URL}/api/recommendation")
+            recommendation_response = await async_httpx_client.post(
+                f"{EEP_SERVICE_URL}/api/recommendation",
+                json=recommendation_request,
+                timeout=60.0
+            )
+            
+            print(f"Recommendation response status: {recommendation_response.status_code}")
+            
+            if recommendation_response.status_code == 200:
+                recommendation_data = recommendation_response.json()
+                print(f"Recommendation response (truncated): {str(recommendation_data)[:500]}...")
                 
-                print(f"Recommendation response status: {recommendation_response.status_code}")
+                # Check structure
+                assert "request_id" in recommendation_data, "Response missing request_id field"
                 
-                if recommendation_response.status_code == 200:
-                    recommendation_data = recommendation_response.json()
-                    print(f"Recommendation response: {recommendation_data}")
+                # If we have recommendations, check their structure
+                if "recommendations" in recommendation_data:
+                    rec_count = len(recommendation_data["recommendations"])
+                    assert rec_count > 0, "No recommendations returned"
+                    print(f"Received {rec_count} recommendations")
                     
-                    # Check structure
-                    assert "request_id" in recommendation_data, "Response missing request_id field"
-                    
-                    # If we have recommendations, check their structure
-                    if "recommendations" in recommendation_data:
-                        assert len(recommendation_data["recommendations"]) > 0, "No recommendations returned"
-                        
-                        # Print the recommendations
-                        for i, rec in enumerate(recommendation_data["recommendations"]):
-                            print(f"Recommendation {i+1}: {rec}")
-                    
-                    # Test passed
-                    return
-            except Exception as e:
-                print(f"Error with endpoint {endpoint}: {str(e)}")
-        
-        # If we get here, none of the endpoints worked
-        pytest.skip("Could not get a successful recommendation from any endpoint")
+                    # Print the first recommendation
+                    if rec_count > 0:
+                        print(f"First recommendation: {recommendation_data['recommendations'][0]}")
+            else:
+                print(f"Recommendation error: {recommendation_response.text[:1000]}")
+                pytest.skip(f"Recommendation endpoint returned error: {recommendation_response.status_code}")
+                
+        except Exception as e:
+            print(f"Recommendation request failed: {str(e)}")
+            pytest.skip(f"Recommendation request failed: {str(e)}")
     except Exception as e:
         print(f"Recommendation flow test failed: {str(e)}")
         pytest.skip(f"Recommendation flow test failed: {str(e)}") 
