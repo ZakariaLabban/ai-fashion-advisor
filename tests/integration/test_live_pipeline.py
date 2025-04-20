@@ -267,7 +267,7 @@ async def test_live_analyze_pipeline(async_httpx_client):
             print(f"Failed to download fallback image: {str(e2)}")
             pytest.skip("Could not download test image")
     
-    # Prepare the file upload for the /api/analyze endpoint
+    # Prepare the file upload for the /analyze endpoint
     # The endpoint expects a 'file' parameter with the image data
     print(f"Person image size: {len(person_image)} bytes")
     files = {
@@ -276,9 +276,9 @@ async def test_live_analyze_pipeline(async_httpx_client):
     
     # Make the request to the analyze endpoint
     try:
-        print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/api/analyze")
+        print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/analyze")
         response = await async_httpx_client.post(
-            f"{EEP_SERVICE_URL}/api/analyze",
+            f"{EEP_SERVICE_URL}/analyze",
             files=files,
             timeout=60.0  # Increased timeout as image processing can take time
         )
@@ -293,6 +293,14 @@ async def test_live_analyze_pipeline(async_httpx_client):
         
         # Print first part of response for debugging
         print(f"EEP analyze response (truncated): {str(data)[:500]}...")
+        
+        # Add more detailed response inspection
+        print(f"Response keys: {data.keys()}")
+        if "detections" in data:
+            print(f"Number of detections: {len(data['detections'])}")
+            if data["detections"]:
+                first_detection = data["detections"][0]
+                print(f"First detection keys: {first_detection.keys() if isinstance(first_detection, dict) else 'not a dict'}")
         
         # Check structure of the response based on AnalysisResponse model
         assert "request_id" in data, "Response missing request_id field"
