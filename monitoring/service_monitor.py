@@ -117,7 +117,7 @@ async def monitor_eep_health_check_issue():
             if service_name != 'eep':  # Only check for services other than EEP
                 try:
                     async with aiohttp.ClientSession() as session:
-                        wrong_path = f"http://{service_config['host']}:{service_config['port']}/health/health"
+                        wrong_path = f"http://{service_config['host']}:{service_config['port']}/health"
                         async with session.get(wrong_path, timeout=1) as response:
                             # If we get a 404, it means EEP is likely trying to access this wrong endpoint
                             EEP_ISSUE.labels(service=service_name).set(1 if response.status == 404 else 0)
