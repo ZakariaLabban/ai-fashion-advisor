@@ -1,0 +1,52 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'service-monitor'
+    static_configs:
+      - targets: ['service-monitor:8000']
+
+  - job_name: 'eep'
+    static_configs:
+      - targets: ['eep:9000']
+
+  - job_name: 'detection-iep'
+    static_configs:
+      - targets: ['detection-iep:8001']
+
+  - job_name: 'style-iep'
+    static_configs:
+      - targets: ['style-iep:8002'] 
+
+  - job_name: 'feature-iep'
+    static_configs:
+      - targets: ['feature-iep:8003']
+
+  - job_name: 'virtual-tryon-iep'
+    static_configs:
+      - targets: ['virtual-tryon-iep:8004']
+
+  - job_name: 'elegance-iep'
+    static_configs:
+      - targets: ['elegance-iep:8005']
+
+  - job_name: 'reco-data-iep'
+    static_configs:
+      - targets: ['reco-data-iep:8007']
+
+  - job_name: 'match-iep'
+    static_configs:
+      - targets: ['match-iep:8008']
+
+  - job_name: 'text2image-iep'
+    static_configs:
+      - targets: ['text2image-iep:8020']
+
+  - job_name: 'ppl-detector-iep'
+    static_configs:
+      - targets: ['ppl-detector-iep:8009'] 

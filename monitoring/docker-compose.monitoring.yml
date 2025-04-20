@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+      - fashion-network  # This connects to your fashion app network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+      - ./grafana/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml
+      - ./grafana/dashboards/fashion_ai_dashboard.json:/etc/grafana/dashboards/fashion_ai_dashboard.json
+      - grafana-storage:/var/lib/grafana
+    ports:
+      - "3001:3000"  # Map to 3001 to avoid conflict with frontend
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+      - fashion-network  # This connects to your fashion app network
+
+  service-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: service-monitor
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+      - fashion-network
+    depends_on:
+      - prometheus
+
+networks:
+  monitoring-network:
+    driver: bridge
+  fashion-network:
+    external: true
+    name: ai-fashion-advisor_default  # This should match your existing docker network name
+
+volumes:
+  grafana-storage: 

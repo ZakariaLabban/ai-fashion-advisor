@@ -1,0 +1,12 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY service_monitor.py .
+COPY requirements.monitor.txt .
+
+RUN pip install -r requirements.monitor.txt
+
+EXPOSE 8000
+
+CMD ["python", "service_monitor.py"] 
