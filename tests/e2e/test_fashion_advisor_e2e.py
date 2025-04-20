@@ -89,6 +89,7 @@ def load_test_image(filename):
         return f.read()
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(300)  # Increase timeout to 5 minutes (300 seconds)
 async def test_e2e_fashion_full_workflow(async_httpx_client):
     """
     End-to-end test for the complete fashion advisor workflow:
@@ -379,6 +380,7 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             }
             
             print("Sending try-on request to virtual try-on service...")
+            print("Note: This step may take 1-2 minutes as it depends on an external AI service...")
             tryon_response = await async_httpx_client.post(
                 f"{VIRTUAL_TRYON_SERVICE_URL}/tryon",
                 json=try_on_request,
@@ -436,10 +438,11 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             }
             
             print("Sending multi-garment try-on request...")
+            print("Note: This step may take 2-5 minutes as it processes multiple garments through an external AI service...")
             multi_tryon_response = await async_httpx_client.post(
                 f"{VIRTUAL_TRYON_SERVICE_URL}/tryon/multi",
                 json=multi_tryon_request,
-                timeout=180.0  # Multi-garment try-on can take longer
+                timeout=240.0  # Multi-garment try-on can take even longer (4 minutes)
             )
             
             print(f"Multi-garment try-on response status: {multi_tryon_response.status_code}")
@@ -490,9 +493,9 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             selected_query = random.choice(fashion_queries)
             print(f"Using text-to-image query: '{selected_query}'")
             
-            # Text-to-image request
+            # Text-to-image request - use the correct endpoint and request format
             text2image_response = await async_httpx_client.post(
-                f"{TEXT2IMAGE_SERVICE_URL}/text2image",
+                f"{TEXT2IMAGE_SERVICE_URL}/text-search",
                 json={"query": selected_query},
                 timeout=120.0  # Image generation can take time
             )
@@ -500,44 +503,35 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             print(f"Text-to-image response status: {text2image_response.status_code}")
             
             if text2image_response.status_code == 200:
-                # Try to parse response and save the generated image
-                try:
-                    if "image/jpeg" in text2image_response.headers.get('content-type', ''):
-                        # Direct image response
-                        text2image_bytes = text2image_response.content
-                    elif "application/json" in text2image_response.headers.get('content-type', ''):
-                        # JSON response with base64-encoded image
-                        text2image_data = text2image_response.json()
-                        if "image_data" in text2image_data:
-                            text2image_bytes = base64.b64decode(text2image_data["image_data"])
-                        else:
-                            print("No image data in text-to-image response")
-                            text2image_bytes = None
-                    else:
-                        print(f"Unexpected text-to-image response format: {text2image_response.headers.get('content-type')}")
-                        text2image_bytes = None
-                    
-                    if text2image_bytes:
-                        text2image_filename = f"e2e_text2image_{int(time.time())}.jpg"
-                        save_test_image(text2image_bytes, text2image_filename)
-                        print(f"Saved generated image: {text2image_filename}")
-                except Exception as e:
-                    print(f"Warning: Could not process text-to-image result: {str(e)}")
+                # For successful requests, the response should be an image
+                if "image/jpeg" in text2image_response.headers.get('content-type', ''):
+                    # Save the image bytes directly
+                    text2image_bytes = text2image_response.content
+                    text2image_filename = f"e2e_text2image_{int(time.time())}.jpg"
+                    save_test_image(text2image_bytes, text2image_filename)
+                    print(f"Saved generated image: {text2image_filename}")
+                else:
+                    print(f"Unexpected text-to-image response format: {text2image_response.headers.get('content-type')}")
             else:
                 print(f"Text-to-image request failed with status {text2image_response.status_code}")
+                error_detail = text2image_response.json().get("detail", "No detail provided")
+                print(f"Error detail: {error_detail}")
                 
-            # Also test the API version
-            api_text2image_response = await async_httpx_client.post(
-                f"{TEXT2IMAGE_SERVICE_URL}/api/text-search",
+            # Also test the check-query endpoint, which validates if a query is clothing-related
+            check_query_response = await async_httpx_client.post(
+                f"{TEXT2IMAGE_SERVICE_URL}/check-query",
                 json={"query": selected_query},
-                timeout=120.0
+                timeout=30.0
             )
             
-            print(f"API text-to-image response status: {api_text2image_response.status_code}")
+            print(f"Check query response status: {check_query_response.status_code}")
             
-            if api_text2image_response.status_code == 200:
-                api_text2image_data = api_text2image_response.json()
-                print(f"API text-to-image response contains image_data: {'image_data' in api_text2image_data}")
+            if check_query_response.status_code == 200:
+                check_data = check_query_response.json()
+                is_clothing = check_data.get("is_clothing_related", False)
+                message = check_data.get("message", "")
+                print(f"Query is clothing-related: {is_clothing}")
+                print(f"Message: {message}")
         except Exception as e:
             print(f"Text-to-image test failed: {str(e)}")
     else:
@@ -559,10 +553,18 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             selected_message = random.choice(chat_messages)
             print(f"Using chat message: '{selected_message}'")
             
-            # Chat request
+            # Chat request - use the correct API endpoint and request format
             chat_response = await async_httpx_client.post(
-                f"{ELEGANCE_SERVICE_URL}/api/elegance/chat",
-                json={"message": selected_message, "history": []},
+                f"{ELEGANCE_SERVICE_URL}/api/chat",
+                json={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": selected_message
+                        }
+                    ],
+                    "session_id": f"e2e_test_{int(time.time())}"
+                },
                 timeout=30.0
             )
             
@@ -574,10 +576,28 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
                 # Check if we have a response
                 if "response" in chat_data:
                     print(f"Chat response (truncated): {chat_data['response'][:100]}...")
+                    
+                    # Verify the response has typical Elegance characteristics
+                    has_french = any(word in chat_data['response'].lower() for word in ["chéri", "magnifique", "parfait", "voilà", "élégant"])
+                    is_fashion_related = any(word in chat_data['response'].lower() for word in ["fashion", "style", "outfit", "wear", "dress", "clothing"])
+                    
+                    if has_french:
+                        print("Response contains French expressions (as expected)")
+                    
+                    if is_fashion_related:
+                        print("Response is fashion-related (as expected)")
+                    
+                    if "session_id" in chat_data:
+                        print(f"Session ID: {chat_data['session_id']}")
                 else:
                     print("No response in chat data")
             else:
                 print(f"Chat request failed with status {chat_response.status_code}")
+                try:
+                    error_data = chat_response.json()
+                    print(f"Error: {error_data}")
+                except Exception:
+                    print(f"Error content: {chat_response.text[:200]}")
         except Exception as e:
             print(f"Elegance chat test failed: {str(e)}")
     else:
