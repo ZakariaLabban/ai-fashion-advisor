@@ -9,6 +9,7 @@ Options:
     --unit       Run unit tests only
     --integration Run integration tests only
     --e2e        Run end-to-end tests only
+    --live       Run tests that require actual services to be running
     --all        Run all tests (default)
     --service=X  Run tests for a specific service (detection, style, feature, etc.)
     --help       Show this help message
@@ -20,20 +21,25 @@ import subprocess
 from pathlib import Path
 
 
-def run_test_command(args, test_type=None, service=None):
+def run_test_command(args, test_type=None, service=None, live=False):
     """Run pytest with the specified arguments."""
     cmd = ["pytest", "-v"]
     
     # Add test type if specified
+    marker_expression = []
     if test_type:
-        cmd.extend(["-m", test_type])
+        marker_expression.append(test_type)
     
     # Add service marker if specified
     if service:
-        if test_type:
-            cmd[-1] = f"{test_type} and {service}"
-        else:
-            cmd.extend(["-m", service])
+        marker_expression.append(service)
+    
+    # Add live marker if specified
+    if live:
+        marker_expression.append("live")
+    
+    if marker_expression:
+        cmd.extend(["-m", " and ".join(marker_expression)])
     
     # Add other arguments
     cmd.extend(args)
@@ -50,6 +56,7 @@ def main():
     run_unit = False
     run_integration = False
     run_e2e = False
+    run_live = False
     service = None
     args = []
     
@@ -63,6 +70,9 @@ def main():
             run_all = False
         elif arg == "--e2e":
             run_e2e = True
+            run_all = False
+        elif arg == "--live":
+            run_live = True
             run_all = False
         elif arg == "--all":
             run_all = True
@@ -87,6 +97,8 @@ def main():
             run_test_command(args, "integration", service)
         if run_e2e:
             run_test_command(args, "e2e", service)
+        if run_live:
+            run_test_command(args, None, service, live=True)
 
 
 if __name__ == "__main__":
