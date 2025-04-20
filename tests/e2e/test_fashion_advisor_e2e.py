@@ -615,31 +615,31 @@ async def test_e2e_fashion_full_workflow(async_httpx_client):
             
             # Count people
             count_response = await async_httpx_client.post(
-                f"{PPL_DETECTOR_SERVICE_URL}/count_people",
+                f"{PPL_DETECTOR_SERVICE_URL}/count_persons",
                 files=ppl_detect_files,
                 timeout=30.0
             )
             
-            print(f"Count people response status: {count_response.status_code}")
+            print(f"Count persons response status: {count_response.status_code}")
             
             if count_response.status_code == 200:
                 count_data = count_response.json()
                 
                 # Check people count
-                if "count" in count_data:
-                    print(f"Detected {count_data['count']} people in the image")
+                if "person_count" in count_data:
+                    print(f"Detected {count_data['person_count']} people in the image")
                 else:
                     print("No count in people detection response")
                 
                 # Get detections with bounding boxes
                 detect_response = await async_httpx_client.post(
-                    f"{PPL_DETECTOR_SERVICE_URL}/detect_people",
+                    f"{PPL_DETECTOR_SERVICE_URL}/detect",
                     files=ppl_detect_files,
                     data={"include_crops": "True"},
                     timeout=30.0
                 )
                 
-                print(f"Detect people response status: {detect_response.status_code}")
+                print(f"Detect persons response status: {detect_response.status_code}")
                 
                 if detect_response.status_code == 200:
                     detect_data = detect_response.json()
