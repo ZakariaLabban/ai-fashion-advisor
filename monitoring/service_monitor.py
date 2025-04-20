@@ -14,7 +14,6 @@ SERVICE_UP = Gauge('service_up', 'Service health status (1=up, 0=down)', ['servi
 API_LATENCY = Gauge('api_latency', 'API response time in seconds', ['service', 'endpoint'])
 API_REQUESTS = Counter('api_requests', 'Count of API requests', ['service', 'endpoint', 'status'])
 SERVICE_INFO = Info('service_info', 'Service information', ['service'])
-EEP_ISSUE = Gauge('eep_health_check_wrong_path', 'Count of EEP health check requests with wrong path', ['service'])
 
 # Define the services to monitor with more detailed configuration
 SERVICES = {
@@ -106,26 +105,6 @@ SERVICES = {
     }
 }
 
-# Monitor EEP wrong health check requests
-async def monitor_eep_health_check_issue():
-    """
-    Special monitoring for the EEP service issue where it's requesting /health/health 
-    instead of /health. This is to track the issue without changing the EEP service.
-    """
-    while True:
-        for service_name, service_config in SERVICES.items():
-            if service_name != 'eep':  # Only check for services other than EEP
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        wrong_path = f"http://{service_config['host']}:{service_config['port']}/health"
-                        async with session.get(wrong_path, timeout=1) as response:
-                            # If we get a 404, it means EEP is likely trying to access this wrong endpoint
-                            EEP_ISSUE.labels(service=service_name).set(1 if response.status == 404 else 0)
-                except:
-                    # No need to log exceptions here, just continue
-                    pass
-        await asyncio.sleep(60)  # Check less frequently than the main health checks
-
 async def check_endpoint(session, service_name, service_config, endpoint, config):
     """Check a specific endpoint and record metrics"""
     url = f"http://{service_config['host']}:{service_config['port']}{endpoint}"
@@ -215,21 +194,10 @@ async def monitor_services():
             # Wait before next check cycle
             await asyncio.sleep(15)  # Check every 15 seconds
 
-async def run_monitoring():
-    """Run all monitoring tasks concurrently"""
-    # Start the EEP issue monitoring in a separate task
-    eep_monitor_task = asyncio.create_task(monitor_eep_health_check_issue())
-    
-    # Run the main service monitoring
-    await monitor_services()
-    
-    # Cancel the EEP monitor task if the main task exits
-    eep_monitor_task.cancel()
-
 if __name__ == "__main__":
     # Start up the server to expose the metrics.
     start_http_server(8000)
     logger.info("Service monitor started on port 8000")
     
     # Start the monitoring loop
-    asyncio.run(run_monitoring()) 
+    asyncio.run(monitor_services()) 
