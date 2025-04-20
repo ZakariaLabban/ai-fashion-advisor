@@ -267,7 +267,7 @@ async def test_live_analyze_pipeline(async_httpx_client):
             print(f"Failed to download fallback image: {str(e2)}")
             pytest.skip("Could not download test image")
     
-    # Prepare the file upload for the /analyze endpoint
+    # Prepare the file upload for the /api/analyze endpoint
     # The endpoint expects a 'file' parameter with the image data
     print(f"Person image size: {len(person_image)} bytes")
     files = {
@@ -276,10 +276,11 @@ async def test_live_analyze_pipeline(async_httpx_client):
     
     # Make the request to the analyze endpoint
     try:
-        print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/analyze")
+        print(f"Calling EEP analyze endpoint: {EEP_SERVICE_URL}/api/analyze")
         response = await async_httpx_client.post(
-            f"{EEP_SERVICE_URL}/analyze",
+            f"{EEP_SERVICE_URL}/api/analyze",
             files=files,
+            headers={"Accept": "application/json"},
             timeout=60.0  # Increased timeout as image processing can take time
         )
         print(f"EEP analyze response status: {response.status_code}")
