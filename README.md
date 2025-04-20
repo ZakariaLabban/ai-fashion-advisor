@@ -347,6 +347,46 @@ docker-compose down
 ./clean.sh
 ```
 
+## Monitoring
+
+The AI Fashion Advisor project includes a monitoring setup using Prometheus and Grafana to track the performance and health of all services.
+
+### Monitoring Setup
+
+1. Start the monitoring stack after starting the main application:
+
+```bash
+cd monitoring
+docker-compose -f docker-compose.monitoring.yml up -d
+```
+
+2. Access the monitoring interfaces:
+   - Prometheus: [http://localhost:9090](http://localhost:9090)
+   - Grafana: [http://localhost:3001](http://localhost:3001)
+     - Default login: admin / fashion_advisor
+
+### Available Dashboards
+
+The monitoring setup includes pre-configured dashboards:
+
+- **AI Fashion Advisor Overview**: Shows key metrics across all services
+  - Request rates
+  - Response times
+  - CPU and memory usage
+  - Error rates
+
+### Monitored Metrics
+
+Each service exposes the following types of metrics:
+
+- **Generic HTTP metrics**: Request counts, latencies, and status codes
+- **Service-specific metrics**: Processing times, confidence scores, API call latencies
+- **Resource usage**: CPU, memory, and model loading status
+
+### Extending Monitoring
+
+To add custom metrics to services, follow the instructions in `monitoring/service-instrumentation-guide.md`.
+
 ## Acknowledgments
 
 This project uses the following technologies and services:

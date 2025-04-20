@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
 from ultralytics import YOLO
+from prometheus_client import Counter, Histogram, Gauge
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +33,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize Prometheus metrics
+detection_count = Counter(
+    'clothing_detection_total', 
+    'Number of clothing items detected',
+    ['class_name']
+)
+detection_processing_time = Histogram(
+    'clothing_detection_processing_seconds', 
+    'Time spent on detection processing',
+    buckets=[0.1, 0.5, 1, 2, 5, 10, 30, 60]
+)
+detection_confidence = Histogram(
+    'clothing_detection_confidence', 
+    'Confidence scores of detected items',
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+)
+model_loaded = Gauge(
+    'clothing_detection_model_loaded', 
+    'Whether the detection model is loaded (1=loaded, 0=not loaded)'
+)
+model_loaded.set(0)  # Initially not loaded
 
 # Get model path from environment variable or use default
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/yolov8_clothing_detection_segmentation.pt")
@@ -78,6 +102,9 @@ async def startup_event():
     """Load the YOLOv8 model at startup."""
     global detection_model
     
+    # Set up Prometheus metrics
+    Instrumentator().instrument(app).expose(app)
+    
     logger.info(f"Loading detection model from {MODEL_PATH}")
     try:
         if not os.path.exists(MODEL_PATH):
@@ -86,8 +113,10 @@ async def startup_event():
         # Load the YOLO model
         detection_model = YOLO(MODEL_PATH)
         logger.info("Detection model loaded successfully")
+        model_loaded.set(1)  # Update the gauge to indicate model is loaded
     except Exception as e:
         logger.error(f"Failed to load detection model: {e}")
+        model_loaded.set(0)  # Model failed to load
         # We won't raise here to allow the app to start, but endpoints will fail
 
 @app.get("/health")
@@ -139,7 +168,8 @@ async def detect_clothing(
         
         # Run inference with YOLOv8
         # Use predict method directly, which works for both detection and segmentation models
-        results = detection_model.predict(image, conf=conf_threshold)
+        with detection_processing_time.time():
+            results = detection_model.predict(image, conf=conf_threshold)
         
         # Process detections
         detections = []
@@ -179,6 +209,10 @@ async def detect_clothing(
                             detection.crop_data = base64.b64encode(crop_bytes).decode('utf-8')
                         
                         detections.append(detection)
+                        
+                        # Update Prometheus metrics
+                        detection_count.labels(class_name=DESIRED_CLASSES[class_id]).inc()
+                        detection_confidence.observe(conf)
                     except Exception as e:
                         logger.warning(f"Error processing detection {i}: {e}")
         
