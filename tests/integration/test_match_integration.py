@@ -159,7 +159,7 @@ async def test_outfit_match_integration(async_httpx_client, monkeypatch, sample_
         assert suggestion["component"] in ["topwear", "bottomwear"]
 
 @pytest.mark.asyncio
-async def test_outfit_match_with_compute_match(async_httpx_client, monkeypatch):
+async def test_outfit_match_with_compute_match(async_httpx_client, monkeypatch, valid_match_response):
     """
     Integration test for the outfit matching using the compute_match endpoint.
     
@@ -183,7 +183,7 @@ async def test_outfit_match_with_compute_match(async_httpx_client, monkeypatch):
         match_score = 85 if request_json["top_style"] == request_json["bottom_style"] else 45
         
         # Customize response based on the input
-        match_response = valid_match_response.copy()
+        match_response = dict(valid_match_response)
         match_response["match_score"] = match_score
         match_response["request_id"] = "test-compute-match-123"
         

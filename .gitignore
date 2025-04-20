@@ -69,3 +69,6 @@ yarn-error.log*
 # Temporary files
 tmp/
 temp/ 
+
+# .gitignore
+models/models--openai--clip-vit-base-patch32/blobs/
