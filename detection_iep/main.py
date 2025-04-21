@@ -140,7 +140,7 @@ async def health_check():
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
-    return PlainTextResponse(generate_latest())
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.post("/detect", response_model=DetectionResponse)
 async def detect_clothing(
