@@ -6,11 +6,13 @@ import numpy as np
 import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
 from ultralytics import YOLO
+# Import Prometheus libraries
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,35 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Define Prometheus metrics
+STYLE_REQUESTS = Counter(
+    'style_requests_total', 
+    'Total number of style classification requests processed'
+)
+STYLE_ERRORS = Counter(
+    'style_errors_total', 
+    'Total number of errors during style classification'
+)
+STYLE_PROCESSING_TIME = Histogram(
+    'style_processing_seconds', 
+    'Time spent processing style classification requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+STYLES_DETECTED = Counter(
+    'styles_detected_total', 
+    'Total number of clothing styles detected',
+    ['style_name']
+)
+MODEL_LOAD_TIME = Gauge(
+    'style_model_load_time_seconds', 
+    'Time taken to load the style model'
+)
+STYLE_CONFIDENCE = Histogram(
+    'style_confidence', 
+    'Confidence scores of detected styles',
+    buckets=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
 )
 
 # Get model path from environment variable or use default
@@ -68,12 +99,18 @@ async def startup_event():
     
     logger.info(f"Loading style model from {MODEL_PATH}")
     try:
+        start_time = time.time()
+        
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
         
         # Load the YOLO model
         style_model = YOLO(MODEL_PATH)
-        logger.info("Style model loaded successfully")
+        
+        load_time = time.time() - start_time
+        MODEL_LOAD_TIME.set(load_time)
+        
+        logger.info(f"Style model loaded successfully in {load_time:.2f} seconds")
     except Exception as e:
         logger.error(f"Failed to load style model: {e}")
         # We won't raise here to allow the app to start, but endpoints will fail
@@ -87,6 +124,11 @@ async def health_check():
             content={"status": "unhealthy", "message": "Model not loaded"}
         )
     return {"status": "healthy", "model": "YOLOv8 Style Classification"}
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.post("/classify", response_model=StyleResponse)
 async def classify_style(
@@ -103,8 +145,12 @@ async def classify_style(
     Returns:
         StyleResponse with list of detected styles and metadata
     """
+    # Increment counter for total requests
+    STYLE_REQUESTS.inc()
+    
     # Check if model is loaded
     if style_model is None:
+        STYLE_ERRORS.inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     # Use specified confidence or default
@@ -118,6 +164,7 @@ async def classify_style(
         image = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
         
         if image is None:
+            STYLE_ERRORS.inc()
             raise HTTPException(status_code=400, detail="Invalid image file")
         
         # Get image dimensions
@@ -134,10 +181,18 @@ async def classify_style(
             class_id = int(box.cls[0])
             conf = float(box.conf[0])
             
+            # Record confidence metric
+            STYLE_CONFIDENCE.observe(conf)
+            
             # Check if meets confidence threshold
             if conf >= conf_threshold:
+                style_name = STYLE_CLASSES[class_id]
+                
+                # Count detected styles by name
+                STYLES_DETECTED.labels(style_name=style_name).inc()
+                
                 style = StyleResult(
-                    style_name=STYLE_CLASSES[class_id],
+                    style_name=style_name,
                     style_id=class_id,
                     confidence=conf
                 )
@@ -146,6 +201,9 @@ async def classify_style(
         # Calculate processing time
         processing_time = time.time() - start_time
         
+        # Record processing time
+        STYLE_PROCESSING_TIME.observe(processing_time)
+        
         return StyleResponse(
             styles=styles,
             processing_time=processing_time,
@@ -153,6 +211,9 @@ async def classify_style(
         )
     
     except Exception as e:
+        # Increment error counter
+        STYLE_ERRORS.inc()
+        
         logger.error(f"Error during style classification: {e}")
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 

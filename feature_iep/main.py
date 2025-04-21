@@ -7,7 +7,7 @@ import cv2
 import ssl
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
@@ -15,6 +15,8 @@ import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
+# Import Prometheus libraries
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +40,29 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Define Prometheus metrics
+FEATURE_REQUESTS = Counter(
+    'feature_extraction_requests_total', 
+    'Total number of feature extraction requests processed'
+)
+FEATURE_ERRORS = Counter(
+    'feature_extraction_errors_total', 
+    'Total number of errors during feature extraction'
+)
+FEATURE_PROCESSING_TIME = Histogram(
+    'feature_extraction_processing_seconds', 
+    'Time spent processing feature extraction requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+MODEL_LOAD_TIME = Gauge(
+    'feature_model_load_time_seconds', 
+    'Time taken to load the feature extraction model'
+)
+COLOR_HISTOGRAM_BINS = Gauge(
+    'color_histogram_bins_total',
+    'Number of bins used in color histograms'
 )
 
 # Get model path from environment variable or use default
@@ -144,6 +169,8 @@ async def startup_event():
     
     logger.info(f"Loading feature extractor model from {MODEL_PATH}")
     try:
+        start_time = time.time()
+        
         # Initialize the model without downloading ImageNet weights
         feature_extractor = MultiTaskResNet50().eval()
         
@@ -177,6 +204,11 @@ async def startup_event():
             # Load the filtered state dict
             load_result = feature_extractor.load_state_dict(filtered_sd, strict=False)
             logger.info(f"Custom feature extractor model loaded successfully with result: {load_result}")
+            
+            # Record model load time
+            load_time = time.time() - start_time
+            MODEL_LOAD_TIME.set(load_time)
+            
         except Exception as e:
             logger.error(f"Error loading model weights: {e}")
             logger.error(f"Detailed traceback:")
@@ -208,6 +240,11 @@ async def health_check():
         )
     return {"status": "healthy", "model": "MultiTaskResNet50 Feature Extractor"}
 
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
 @app.post("/extract", response_model=FeatureResponse)
 async def extract_image_features(
     file: UploadFile = File(...),
@@ -223,8 +260,12 @@ async def extract_image_features(
     Returns:
         FeatureResponse with feature vector and color histogram
     """
+    # Increment counter for total requests
+    FEATURE_REQUESTS.inc()
+    
     # Check if model is loaded
     if feature_extractor is None:
+        FEATURE_ERRORS.inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     start_time = time.time()
@@ -252,8 +293,14 @@ async def extract_image_features(
         # 2. Compute color histogram
         color_hist = compute_color_histogram(img_bgr, bins_per_channel=bins_per_channel)
         
+        # Record number of bins
+        COLOR_HISTOGRAM_BINS.set(len(color_hist))
+        
         # Calculate processing time
         processing_time = time.time() - start_time
+        
+        # Record processing time
+        FEATURE_PROCESSING_TIME.observe(processing_time)
         
         return FeatureResponse(
             features=feature_vector.tolist(),  # Convert to list for JSON serialization
@@ -263,6 +310,9 @@ async def extract_image_features(
         )
     
     except Exception as e:
+        # Increment error counter
+        FEATURE_ERRORS.inc()
+        
         logger.error(f"Error during feature extraction: {e}")
         import traceback
         logger.error(traceback.format_exc())

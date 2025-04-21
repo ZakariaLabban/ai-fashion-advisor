@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Fashion Advisory Services'
+    orgId: 1
+    folder: 'Fashion Monitoring'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false 

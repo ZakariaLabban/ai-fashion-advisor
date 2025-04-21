@@ -41,6 +41,15 @@ scrape_configs:
       - targets: ['detection-iep:8001']
         labels:
           service: 'detection-iep'
+      - targets: ['style-iep:8002']
+        labels:
+          service: 'style-iep'
+      - targets: ['feature-iep:8003']
+        labels:
+          service: 'feature-iep'
+      - targets: ['eep:9000']
+        labels:
+          service: 'eep'
 
   # Docker container metrics
   - job_name: 'docker'
