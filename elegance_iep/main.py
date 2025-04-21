@@ -3,16 +3,18 @@ import logging
 import json
 import uuid
 import re
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import aiofiles
 from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Load environment variables
 load_dotenv()
@@ -158,6 +160,34 @@ NON_FASHION_TOPICS = [
     'golf', 'race', 'championship', 'tournament', 'league', 'team', 'player', 'coach', 'score', 'win',
     'lose', 'game', 'match', 'competition', 'weather', 'climate', 'temperature', 'forecast'
 ]
+
+# Initialize Prometheus metrics
+CHAT_REQUESTS = Counter(
+    'elegance_chat_requests_total', 
+    'Total number of chat requests processed'
+)
+CHAT_ERRORS = Counter(
+    'elegance_chat_errors_total', 
+    'Total number of errors during chat processing'
+)
+CHAT_PROCESSING_TIME = Histogram(
+    'elegance_chat_processing_seconds', 
+    'Time spent processing chat requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
+)
+MODEL_TOKEN_USAGE = Counter(
+    'elegance_tokens_total', 
+    'Total number of tokens used by the LLM',
+    ['type']  # prompt or completion
+)
+REJECTED_NON_FASHION_QUERIES = Counter(
+    'elegance_rejected_non_fashion_queries_total',
+    'Total number of rejected non-fashion related queries'
+)
+ACTIVE_SESSIONS = Gauge(
+    'elegance_active_sessions',
+    'Number of active chat sessions'
+)
 
 # Helper functions
 async def save_conversation(session_id: str, messages: List[Dict[str, str]]):
@@ -497,31 +527,33 @@ async def home():
 
 @app.post("/chat")
 async def chat(request: Request):
-    """Chat endpoint for JS client"""
+    """Chat endpoint for web interface"""
+    # Increment the request counter
+    CHAT_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
-        # Parse JSON request
-        try:
-            data = await request.json()
-            message = data.get("message", "")
-            session_id = data.get("session_id", str(uuid.uuid4()))
-        except Exception as e:
-            logger.error(f"Error parsing request: {str(e)}")
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"Invalid request format: {str(e)}", 
-                         "response": "Je suis désolé! I couldn't understand your request. Please try again."
-                }
-            )
+        # Parse form data
+        form_data = await request.form()
+        user_message = form_data.get("message", "")
+        session_id = form_data.get("session_id", "")
+        
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Message is required")
         
         # Log received message for debugging
-        logger.info(f"Received message: {message} with session ID: {session_id}")
+        logger.info(f"Received message: {user_message} with session ID: {session_id}")
         
         # Check if message is fashion-related
-        is_fashion = await is_fashion_related(message)
+        is_fashion = await is_fashion_related(user_message)
         if not is_fashion:
-            redirect_message = await generate_fashion_redirect()
-            logger.info(f"Redirecting non-fashion topic with: {redirect_message}")
-            return {"response": redirect_message, "session_id": session_id}
+            # Increment rejected non-fashion queries counter
+            REJECTED_NON_FASHION_QUERIES.inc()
+            
+            # Generate a redirect message
+            bot_response = await generate_fashion_redirect()
+            logger.info(f"Redirecting non-fashion topic with: {bot_response}")
+            return {"response": bot_response, "session_id": session_id}
         
         # Load existing conversation
         messages = await load_conversation(session_id)
@@ -531,7 +563,7 @@ async def chat(request: Request):
             messages.append({"role": "system", "content": ELEGANCE_SYSTEM_PROMPT})
         
         # Add user message
-        messages.append({"role": "user", "content": message})
+        messages.append({"role": "user", "content": user_message})
         
         # Generate response
         logger.info("Generating response...")
@@ -546,17 +578,33 @@ async def chat(request: Request):
         if not save_success:
             logger.warning("Failed to save conversation to file, but continuing with in-memory only")
         
+        # Record token usage if available
+        if hasattr(response, 'usage'):
+            MODEL_TOKEN_USAGE.labels(type='prompt').inc(response.usage.prompt_tokens)
+            MODEL_TOKEN_USAGE.labels(type='completion').inc(response.usage.completion_tokens)
+        
         return {"response": response, "session_id": session_id}
     except Exception as e:
+        # Increment error counter
+        CHAT_ERRORS.inc()
+        
         logger.error(f"Error in chat endpoint: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"error": str(e), "response": "Je suis désolé! There was an error processing your request. Please try again."}
         )
+    finally:
+        # Record processing time
+        processing_time = time.time() - start_time
+        CHAT_PROCESSING_TIME.observe(processing_time)
 
 @app.post("/api/chat")
 async def api_chat(request: ChatRequest):
-    """API endpoint for programmatic access"""
+    """API endpoint for chat interaction"""
+    # Increment the request counter
+    CHAT_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         session_id = request.session_id or str(uuid.uuid4())
         
@@ -572,9 +620,13 @@ async def api_chat(request: ChatRequest):
             latest_user_message = user_messages[-1]["content"]
             is_fashion = await is_fashion_related(latest_user_message)
             if not is_fashion:
-                redirect_message = await generate_fashion_redirect()
-                logger.info(f"API: Redirecting non-fashion topic with: {redirect_message}")
-                return {"response": redirect_message, "session_id": session_id}
+                # Increment rejected non-fashion queries counter
+                REJECTED_NON_FASHION_QUERIES.inc()
+                
+                # Generate a redirect message
+                bot_response = await generate_fashion_redirect()
+                logger.info(f"API: Redirecting non-fashion topic with: {bot_response}")
+                return {"response": bot_response, "session_id": session_id}
         
         # Ensure system prompt is present
         if not messages or messages[0]["role"] != "system":
@@ -601,13 +653,28 @@ async def api_chat(request: ChatRequest):
         if not save_success:
             logger.warning("Failed to save API conversation to file, but continuing with in-memory only")
         
+        # Record token usage if available
+        if hasattr(response, 'usage'):
+            MODEL_TOKEN_USAGE.labels(type='prompt').inc(response.usage.prompt_tokens)
+            MODEL_TOKEN_USAGE.labels(type='completion').inc(response.usage.completion_tokens)
+        
+        # Update active sessions gauge
+        ACTIVE_SESSIONS.inc()
+        
         return {"response": response, "session_id": session_id}
     except Exception as e:
+        # Increment error counter
+        CHAT_ERRORS.inc()
+        
         logger.error(f"Error in api_chat endpoint: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"error": str(e), "response": "Je suis désolé! There was an error processing your API request. Please try again."}
         )
+    finally:
+        # Record processing time
+        processing_time = time.time() - start_time
+        CHAT_PROCESSING_TIME.observe(processing_time)
 
 @app.get("/health")
 async def health_check():
@@ -668,6 +735,11 @@ async def fashion_knowledge():
             "Common error resolution"
         ]
     }
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 if __name__ == "__main__":
     import uvicorn

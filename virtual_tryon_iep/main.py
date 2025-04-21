@@ -8,13 +8,15 @@ import asyncio
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 import httpx
 import uuid
 from dotenv import load_dotenv
+# Import Prometheus client for metrics
+from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest
 
 # Load environment variables from .env file
 load_dotenv()
@@ -86,6 +88,34 @@ class MultiTryOnResponse(BaseModel):
     final_result_data: str  # Base64 encoded final result image
     details: Dict[str, Any]  # Additional details about the processing
 
+# Initialize Prometheus metrics
+TRYON_REQUESTS = Counter(
+    'virtual_tryon_requests_total', 
+    'Total number of virtual try-on requests processed'
+)
+TRYON_ERRORS = Counter(
+    'virtual_tryon_errors_total', 
+    'Total number of errors during virtual try-on processing'
+)
+TRYON_PROCESSING_TIME = Histogram(
+    'virtual_tryon_processing_seconds', 
+    'Time spent processing virtual try-on requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 180.0]
+)
+MULTI_TRYON_REQUESTS = Counter(
+    'multi_virtual_tryon_requests_total', 
+    'Total number of multi-garment virtual try-on requests processed'
+)
+API_ERROR_COUNTER = Counter(
+    'virtual_tryon_api_errors', 
+    'Total number of external API errors',
+    ['error_type']
+)
+SUCCESSFUL_TRYON_COUNTER = Counter(
+    'successful_virtual_tryon_total',
+    'Total number of successful virtual try-on operations'
+)
+
 @app.get("/")
 async def root():
     """Root endpoint with information about the service"""
@@ -109,6 +139,11 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "Virtual Try-On IEP"}
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 async def run_virtual_tryon(
     model_path: str, 
@@ -450,14 +485,13 @@ def get_base64_image(image_path: str) -> str:
 @app.post("/tryon", response_model=TryOnResponse)
 async def virtual_tryon_endpoint(request: TryOnRequest):
     """
-    Perform virtual try-on with a model image and a garment image.
-    
-    Args:
-        request: TryOnRequest containing base64 encoded images and options
-    
-    Returns:
-        TryOnResponse with the result image and details
+    Virtual try-on endpoint that processes a model image and a garment image
+    to create a synthetic image of the model wearing the garment.
     """
+    # Increment the request counter
+    TRYON_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         logger.info(f"Received try-on request: category={request.category}, mode={request.mode}")
         
@@ -493,21 +527,36 @@ async def virtual_tryon_endpoint(request: TryOnRequest):
         )
     
     except Exception as e:
+        # Increment the error counter
+        TRYON_ERRORS.inc()
+        
+        error_type = type(e).__name__
+        if isinstance(e, httpx.HTTPError):
+            API_ERROR_COUNTER.labels(error_type="http_error").inc()
+        elif isinstance(e, FileNotFoundError):
+            API_ERROR_COUNTER.labels(error_type="file_not_found").inc()
+        else:
+            API_ERROR_COUNTER.labels(error_type="other").inc()
+            
         logger.error(f"Error in virtual try-on endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Virtual try-on failed: {str(e)}")
+    finally:
+        # Record processing time
+        processing_time = time.time() - start_time
+        TRYON_PROCESSING_TIME.observe(processing_time)
 
 @app.post("/tryon/multi", response_model=MultiTryOnResponse)
 async def multi_garment_tryon_endpoint(request: MultiTryOnRequest):
     """
-    Perform virtual try-on with a model image and multiple garments (top and bottom).
-    
-    Args:
-        request: MultiTryOnRequest containing base64 encoded images and options
-    
-    Returns:
-        MultiTryOnResponse with the result image and details
+    Multi-garment virtual try-on endpoint that processes a model image along with
+    separate top and bottom garment images to create a synthetic outfit image.
     """
+    # Increment the request counter
+    TRYON_REQUESTS.inc()
+    MULTI_TRYON_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         logger.info(f"Received multi-garment try-on request: mode={request.mode}")
         
@@ -555,6 +604,9 @@ async def multi_garment_tryon_endpoint(request: MultiTryOnRequest):
         # Construct relative path
         relative_path = f"/static/results/result_{timestamp}.jpg"
         
+        # Increment the success counter
+        SUCCESSFUL_TRYON_COUNTER.inc()
+        
         return MultiTryOnResponse(
             final_result_path=relative_path,
             final_result_data=result_image_data,
@@ -565,9 +617,24 @@ async def multi_garment_tryon_endpoint(request: MultiTryOnRequest):
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
+        # Increment the error counter
+        TRYON_ERRORS.inc()
+        
+        error_type = type(e).__name__
+        if isinstance(e, httpx.HTTPError):
+            API_ERROR_COUNTER.labels(error_type="http_error").inc()
+        elif isinstance(e, FileNotFoundError):
+            API_ERROR_COUNTER.labels(error_type="file_not_found").inc()
+        else:
+            API_ERROR_COUNTER.labels(error_type="other").inc()
+            
         logger.error(f"Error in multi-garment try-on endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Multi-garment try-on failed: {str(e)}")
+    finally:
+        # Record processing time
+        processing_time = time.time() - start_time
+        TRYON_PROCESSING_TIME.observe(processing_time)
 
 if __name__ == "__main__":
     import uvicorn

@@ -57,6 +57,15 @@ scrape_configs:
       - targets: ['ppl-detector-iep:8009']
         labels:
           service: 'ppl-detector-iep'
+      - targets: ['virtual-tryon-iep:8004']
+        labels:
+          service: 'virtual-tryon-iep'
+      - targets: ['text2image-iep:8005']
+        labels:
+          service: 'text2image-iep'
+      - targets: ['elegance-iep:8006']
+        labels:
+          service: 'elegance-iep'
 
   # Docker container metrics
   - job_name: 'docker'

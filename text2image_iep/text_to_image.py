@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from pydantic import BaseModel
 from transformers import CLIPProcessor, CLIPModel
 from qdrant_client import QdrantClient
@@ -12,10 +12,41 @@ from dotenv import load_dotenv
 import os
 import openai
 import json
+import time
+# Import Prometheus client for metrics
+from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest
 
 load_dotenv()
 
 app = FastAPI()
+
+# Initialize Prometheus metrics
+TEXT_SEARCH_REQUESTS = Counter(
+    'text_to_image_search_requests_total', 
+    'Total number of text-to-image search requests processed'
+)
+TEXT_SEARCH_ERRORS = Counter(
+    'text_to_image_search_errors_total', 
+    'Total number of errors during text-to-image search'
+)
+TEXT_SEARCH_PROCESSING_TIME = Histogram(
+    'text_to_image_processing_seconds', 
+    'Time spent processing text-to-image search requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
+)
+NON_FASHION_QUERY_COUNTER = Counter(
+    'non_fashion_query_total',
+    'Total number of rejected non-fashion related queries'
+)
+EMBEDDING_GENERATION_TIME = Histogram(
+    'text_embedding_generation_seconds',
+    'Time taken to generate text embeddings',
+    buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+)
+EMPTY_RESULTS_COUNTER = Counter(
+    'empty_search_results_total',
+    'Total number of search queries that returned no results'
+)
 
 # === Configure OpenAI ===
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -28,10 +59,15 @@ clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir
 clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
 
 def get_text_embedding(text: str):
+    start_time = time.time()
     inputs = clip_processor(text=[text], return_tensors="pt")
     with torch.no_grad():
         embedding = clip_model.get_text_features(**inputs)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+    
+    # Record embedding generation time
+    EMBEDDING_GENERATION_TIME.observe(time.time() - start_time)
+    
     return embedding[0].cpu().tolist()
 
 # === Connect to Qdrant ===
@@ -144,11 +180,18 @@ class QueryResponse(BaseModel):
 
 @app.post("/text-search")
 async def stream_top_match(request: SearchRequest):
+    # Increment the request counter
+    TEXT_SEARCH_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         # Step 0: Check if query is clothing-related
         is_related = await is_clothing_related(request.query)
         
         if not is_related:
+            # Track non-fashion queries
+            NON_FASHION_QUERY_COUNTER.inc()
+            
             raise HTTPException(
                 status_code=400, 
                 detail="This query doesn't appear to be about clothing or fashion items. Please try a specific fashion-related query like 'red dress', 'blue denim jacket', or 'black leather boots'."
@@ -166,6 +209,9 @@ async def stream_top_match(request: SearchRequest):
         )
 
         if not results:
+            # Track empty results
+            EMPTY_RESULTS_COUNTER.inc()
+            
             raise HTTPException(status_code=404, detail="No matching fashion items found. Please try a different fashion-related query.")
 
         # Step 3: Convert to filename
@@ -182,9 +228,17 @@ async def stream_top_match(request: SearchRequest):
         return StreamingResponse(image_bytes, media_type="image/jpeg")
 
     except HTTPException as e:
+        # Don't double-count these as they're already tracked above
         raise e
     except Exception as e:
+        # Increment error counter for unexpected errors
+        TEXT_SEARCH_ERRORS.inc()
+        
         raise HTTPException(status_code=500, detail=f"An error occurred while processing your request: {str(e)}")
+    finally:
+        # Record processing time
+        processing_time = time.time() - start_time
+        TEXT_SEARCH_PROCESSING_TIME.observe(processing_time)
 
 @app.post("/check-query")
 async def check_clothing_query(request: SearchRequest):
@@ -221,12 +275,16 @@ async def health_check():
         
         return {
             "status": "healthy", 
-            "service": "Text to Image IEP",
-            "models": ["CLIP-ViT-B/32"],
-            "collections": [COLLECTION]
+            "service": "Text-to-Image IEP",
+            "model": "CLIP"
         }
     except Exception as e:
         return {
             "status": "unhealthy",
             "error": str(e)
         }
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
