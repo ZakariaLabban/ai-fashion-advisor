@@ -181,7 +181,6 @@ async def run_virtual_tryon(
             "garment_image": garment_image,
             "category": category,
             "moderation_level": "permissive",
-            "adjust_hands": False,
             "restore_background": False,
             "restore_clothes": False,
             "garment_photo_type": "auto",
