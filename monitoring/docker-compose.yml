@@ -78,7 +78,7 @@ networks:
     driver: bridge
   app-network:
     external: true
-    name: ai-fashion-advisor-updated_default
+    name: fashion-advisor-network
 
 volumes:
   prometheus_data:
