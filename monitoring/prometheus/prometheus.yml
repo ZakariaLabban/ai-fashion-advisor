@@ -1,0 +1,70 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files to load
+rule_files:
+  # - "rules/alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Self monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node exporter for host metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # cAdvisor for container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Fashion advisory application services
+  - job_name: 'fashion-services'
+    scrape_interval: 10s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['frontend:80']
+        labels:
+          service: 'frontend'
+      - targets: ['eep:9000']
+        labels:
+          service: 'eep'
+      - targets: ['detection-iep:8001']
+        labels:
+          service: 'detection-iep'
+      - targets: ['style-iep:8002']
+        labels:
+          service: 'style-iep'
+      - targets: ['feature-iep:8003']
+        labels:
+          service: 'feature-iep'
+      - targets: ['virtual-tryon-iep:8004']
+        labels:
+          service: 'virtual-tryon-iep'
+      - targets: ['elegance-iep:8005']
+        labels:
+          service: 'elegance-iep'
+      - targets: ['reco-data-iep:8007']
+        labels:
+          service: 'reco-data-iep'
+      - targets: ['match-iep:8008']
+        labels:
+          service: 'match-iep'
+      - targets: ['text2image-iep:8020']
+        labels:
+          service: 'text2image-iep'
+      - targets: ['ppl-detector-iep:8009']
+        labels:
+          service: 'ppl-detector-iep' 
