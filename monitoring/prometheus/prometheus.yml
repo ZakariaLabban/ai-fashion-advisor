@@ -30,7 +30,7 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
 
-  # Fashion advisory application services
+  # Working Fashion advisory application services
   - job_name: 'fashion-services'
     scrape_interval: 10s
     metrics_path: /metrics
@@ -38,33 +38,8 @@ scrape_configs:
       - targets: ['frontend:80']
         labels:
           service: 'frontend'
-      - targets: ['eep:9000']
-        labels:
-          service: 'eep'
-      - targets: ['detection-iep:8001']
-        labels:
-          service: 'detection-iep'
-      - targets: ['style-iep:8002']
-        labels:
-          service: 'style-iep'
-      - targets: ['feature-iep:8003']
-        labels:
-          service: 'feature-iep'
-      - targets: ['virtual-tryon-iep:8004']
-        labels:
-          service: 'virtual-tryon-iep'
-      - targets: ['elegance-iep:8005']
-        labels:
-          service: 'elegance-iep'
-      - targets: ['reco-data-iep:8007']
-        labels:
-          service: 'reco-data-iep'
-      - targets: ['match-iep:8008']
-        labels:
-          service: 'match-iep'
-      - targets: ['text2image-iep:8020']
-        labels:
-          service: 'text2image-iep'
-      - targets: ['ppl-detector-iep:8009']
-        labels:
-          service: 'ppl-detector-iep' 
+
+  # Docker container metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['cadvisor:8080'] 
