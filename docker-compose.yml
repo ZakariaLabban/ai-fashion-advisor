@@ -9,9 +9,6 @@ services:
       - eep
     volumes:
       - ./eep/static:/usr/share/nginx/html/static
-    networks:
-      - app-network
-      - monitoring-network
 
   # External Endpoint Processor
   eep:
@@ -43,10 +40,6 @@ services:
       - TEXT2IMAGE_SERVICE_URL=http://text2image-iep:8020
       - PPL_DETECTOR_SERVICE_URL=http://ppl-detector-iep:8009
       - SERVICE_TIMEOUT=60
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
 
   # Detection Internal Endpoint Processor
   detection-iep:
@@ -60,10 +53,6 @@ services:
     environment:
       - MODEL_PATH=/app/models/yolov8_clothing_detection_segmentation.pt
       - CONFIDENCE_THRESHOLD=0.55
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
 
   # Style Classification Internal Endpoint Processor
   style-iep:
@@ -77,10 +66,6 @@ services:
     environment:
       - MODEL_PATH=/app/models/yolov8_style_model.pt
       - CONFIDENCE_THRESHOLD=0.3
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
 
   # Feature Extraction Internal Endpoint Processor
   feature-iep:
@@ -93,10 +78,6 @@ services:
       - ./multitask_resnet50_finetuned.pt:/app/models/multitask_resnet50_finetuned.pt
     environment:
       - MODEL_PATH=/app/models/multitask_resnet50_finetuned.pt
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
       
   # Virtual Try-On Internal Endpoint Processor
   virtual-tryon-iep:
@@ -114,10 +95,6 @@ services:
     environment:
       - FASHN_AI_API_KEY=${FASHN_AI_API_KEY}
       - FASHN_AI_BASE_URL=${FASHN_AI_BASE_URL}
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
 
   # Elegance Chatbot Internal Endpoint Processor
   elegance-iep:
@@ -130,10 +107,6 @@ services:
       - ./elegance_iep/static:/app/static
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
       
   # Recommendation Data Internal Endpoint Processor
   reco-data-iep:
@@ -146,12 +119,7 @@ services:
       - ./reco_data_iep/ca.pem:/app/ca.pem
       - ./reco_data_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
     env_file:
-      - ./reco_data_iep/.env
-    environment:
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
+      - ./reco_data_iep/.env 
       
   # Match Analysis Internal Endpoint Processor
   match-iep:
@@ -163,10 +131,6 @@ services:
       - ./match_iep:/app
     environment:
       - SERVICE_TIMEOUT=30
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
       
   # Text to Image Internal Endpoint Processor  
   text2image-iep:
@@ -179,11 +143,6 @@ services:
       - ./text2image_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
     env_file:
       - ./text2image_iep/.env
-    environment:
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
       
   # Person Detection Internal Endpoint Processor
   ppl-detector-iep:
@@ -196,15 +155,4 @@ services:
       - ./yolov8n.pt:/app/models/yolov8n.pt
     environment:
       - MODEL_PATH=/app/models/yolov8n.pt
-      - CONFIDENCE_THRESHOLD=0.45
-      - ENABLE_METRICS=true
-    networks:
-      - app-network
-      - monitoring-network
-
-networks:
-  app-network:
-    driver: bridge
-  monitoring-network:
-    external: true
-    name: monitoring-network
+      - CONFIDENCE_THRESHOLD=0.45 
