@@ -1,0 +1,20 @@
+# HELP frontend_up Frontend service health status
+# TYPE frontend_up gauge
+frontend_up 1
+
+# HELP frontend_version Frontend version
+# TYPE frontend_version gauge
+frontend_version{version="1.0.0"} 1
+
+# HELP frontend_static_assets_served_total Total number of static assets served
+# TYPE frontend_static_assets_served_total counter
+frontend_static_assets_served_total 0
+
+# HELP frontend_routes_accessed_total Total number of frontend route accesses
+# TYPE frontend_routes_accessed_total counter
+frontend_routes_accessed_total{route="/"} 0
+frontend_routes_accessed_total{route="/outfit-matcher"} 0
+
+# HELP frontend_build_info Build information about the frontend
+# TYPE frontend_build_info gauge
+frontend_build_info{version="1.0.0",nodejs_version="18.x"} 1 
