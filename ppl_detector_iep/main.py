@@ -23,6 +23,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add Prometheus metrics
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
