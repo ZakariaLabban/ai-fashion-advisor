@@ -6,7 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import PointStruct, Filter, FieldCondition, MatchValue
 import numpy as np
 import io
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.service_account import Credentials
@@ -15,6 +15,9 @@ from qdrant_client.http.models import MatchAny
 from dotenv import load_dotenv
 import os
 import logging
+import time
+# Import Prometheus client for metrics
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +51,33 @@ def build_qdrant_filter(filters_dict: Optional[dict]):
 
 # === FastAPI Init ===
 app = FastAPI(title="Recommendation IEP", version="1.0")
+
+# === Prometheus Metrics ===
+RECO_REQUESTS = Counter(
+    'recommendation_requests_total', 
+    'Total number of recommendation requests processed'
+)
+RECO_ERRORS = Counter(
+    'recommendation_errors_total', 
+    'Total number of errors during recommendation processing'
+)
+RECO_PROCESSING_TIME = Histogram(
+    'recommendation_processing_seconds', 
+    'Time spent processing recommendation requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+MATCHING_REQUESTS = Counter(
+    'matching_requests_total',
+    'Total number of matching requests processed'
+)
+SIMILARITY_REQUESTS = Counter(
+    'similarity_requests_total',
+    'Total number of similarity requests processed'
+)
+DB_CONNECTION_ERRORS = Counter(
+    'db_connection_errors_total',
+    'Total number of database connection errors'
+)
 
 # === Configs ===
 MYSQL_CONFIG = {
@@ -99,6 +129,15 @@ def pad_vector_to_512(vector):
 from fastapi import Query
 from fastapi import Body
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
 @app.post("/matching")
 def get_best_matching_image(
     gender: Optional[str] = Query(None),
@@ -106,6 +145,11 @@ def get_best_matching_image(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
+    # Increment the matching request counter
+    MATCHING_REQUESTS.inc()
+    RECO_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         # Log vector information
         logger.info(f"Received vector of length: {len(vector)}")
@@ -192,8 +236,15 @@ def get_best_matching_image(
             _, done = full_downloader.next_chunk()
         full_fh.seek(0)
 
+        # Measure processing time
+        processing_time = time.time() - start_time
+        RECO_PROCESSING_TIME.observe(processing_time)
+        
         return StreamingResponse(full_fh, media_type="image/jpeg")
     except Exception as e:
+        # Increment error counter
+        RECO_ERRORS.inc()
+        
         logger.error(f"Error in get_best_matching_image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -204,6 +255,11 @@ def get_similar_full_image(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
+    # Increment the similarity request counter
+    SIMILARITY_REQUESTS.inc()
+    RECO_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         # Log vector information
         logger.info(f"Received vector of length: {len(vector)}")
@@ -287,8 +343,15 @@ def get_similar_full_image(
             _, done = full_downloader.next_chunk()
         full_fh.seek(0)
 
+        # Measure processing time
+        processing_time = time.time() - start_time
+        RECO_PROCESSING_TIME.observe(processing_time)
+        
         return StreamingResponse(full_fh, media_type="image/jpeg")
     except Exception as e:
+        # Increment error counter
+        RECO_ERRORS.inc()
+        
         logger.error(f"Error in get_similar_full_image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -300,6 +363,10 @@ def recommendation_route(
     type_: Optional[str] = Query(None),
     vector: List[float] = Body(...)
 ):
+    # Increment the recommendation request counter
+    RECO_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         logger.info(f"Recommendation request: {operation}, gender: {gender}, style: {style}, type: {type_}")
         logger.info(f"Vector length: {len(vector)}")
@@ -317,7 +384,10 @@ def recommendation_route(
         # Pass through HTTP exceptions
         raise he
     except Exception as e:
-        logger.error(f"Error in recommendation route: {str(e)}")
+        # Increment error counter
+        RECO_ERRORS.inc()
+        
+        logger.error(f"Error in recommendation_route: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 # === Entry point to run from terminal ===

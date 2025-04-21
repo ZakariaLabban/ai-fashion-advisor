@@ -6,11 +6,13 @@ import numpy as np
 import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
 from ultralytics import YOLO
+# Import Prometheus client for metrics
+from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +46,29 @@ PERSON_CLASS_ID = 0
 # Model instance - will be loaded at startup
 detection_model = None
 
+# Define Prometheus metrics
+DETECTION_REQUESTS = Counter(
+    'person_detection_requests_total', 
+    'Total number of person detection requests processed'
+)
+DETECTION_ERRORS = Counter(
+    'person_detection_errors_total', 
+    'Total number of errors during person detection'
+)
+DETECTION_PROCESSING_TIME = Histogram(
+    'person_detection_processing_seconds', 
+    'Time spent processing person detection requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+PERSON_COUNT = Summary(
+    'detected_persons_count', 
+    'Number of persons detected in images'
+)
+MODEL_LOAD_TIME = Gauge(
+    'person_detector_model_load_time_seconds', 
+    'Time taken to load the person detection model'
+)
+
 # Pydantic models for request/response
 class PersonDetection(BaseModel):
     confidence: float
@@ -63,12 +88,19 @@ async def startup_event():
     
     logger.info(f"Loading person detection model from {MODEL_PATH}")
     try:
+        start_time = time.time()
+        
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
         
         # Load the YOLO model
         detection_model = YOLO(MODEL_PATH)
-        logger.info("Person detection model loaded successfully")
+        
+        # Record model load time
+        load_time = time.time() - start_time
+        MODEL_LOAD_TIME.set(load_time)
+        
+        logger.info(f"Person detection model loaded successfully in {load_time:.2f} seconds")
     except Exception as e:
         logger.error(f"Failed to load person detection model: {e}")
         # We won't raise here to allow the app to start, but endpoints will fail
@@ -82,6 +114,11 @@ async def health_check():
             content={"status": "unhealthy", "message": "Model not loaded"}
         )
     return {"status": "healthy", "model": "YOLOv8 Person Detection"}
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.post("/detect", response_model=DetectionResponse)
 async def detect_persons(
@@ -100,8 +137,12 @@ async def detect_persons(
     Returns:
         DetectionResponse with count of persons and metadata
     """
+    # Increment request counter
+    DETECTION_REQUESTS.inc()
+    
     # Check if model is loaded
     if detection_model is None:
+        DETECTION_ERRORS.inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     # Use specified confidence or default
@@ -162,8 +203,12 @@ async def detect_persons(
                     except Exception as e:
                         logger.warning(f"Error processing detection {i}: {e}")
         
+        # Record number of detected persons
+        PERSON_COUNT.observe(len(detections))
+        
         # Calculate processing time
         processing_time = time.time() - start_time
+        DETECTION_PROCESSING_TIME.observe(processing_time)
         
         return DetectionResponse(
             person_count=len(detections),
@@ -173,6 +218,9 @@ async def detect_persons(
         )
     
     except Exception as e:
+        # Increment error counter
+        DETECTION_ERRORS.inc()
+        
         logger.error(f"Error during detection: {e}")
         import traceback
         logger.error(traceback.format_exc())
@@ -193,8 +241,12 @@ async def count_persons(
     Returns:
         JSON response with count of persons
     """
+    # Increment request counter
+    DETECTION_REQUESTS.inc()
+    
     # Check if model is loaded
     if detection_model is None:
+        DETECTION_ERRORS.inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     # Use specified confidence or default

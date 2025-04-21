@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any, Union
 import httpx
@@ -17,6 +17,9 @@ from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime
 import asyncio
+import time
+# Import Prometheus client for metrics
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +50,36 @@ STYLE_SERVICE_URL = os.getenv("STYLE_SERVICE_URL", "http://style-iep:8002")
 
 # Timeout for service requests (in seconds)
 SERVICE_TIMEOUT = int(os.getenv("SERVICE_TIMEOUT", "30"))
+
+# Define Prometheus metrics
+MATCH_REQUESTS = Counter(
+    'match_requests_total', 
+    'Total number of outfit match requests processed'
+)
+MATCH_ERRORS = Counter(
+    'match_errors_total', 
+    'Total number of errors during outfit matching'
+)
+MATCH_PROCESSING_TIME = Histogram(
+    'match_processing_seconds', 
+    'Time spent processing outfit match requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+MATCH_SCORES = Histogram(
+    'match_scores', 
+    'Distribution of outfit match scores',
+    buckets=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+)
+COLOR_HARMONY_SCORES = Histogram(
+    'color_harmony_scores', 
+    'Distribution of color harmony scores',
+    buckets=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+)
+STYLE_CONSISTENCY_SCORES = Histogram(
+    'style_consistency_scores', 
+    'Distribution of style consistency scores',
+    buckets=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+)
 
 # Models
 class MatchResponse(BaseModel):
@@ -841,14 +874,23 @@ async def health():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
 @app.post("/match", response_model=MatchResponse)
 async def match_outfit(
     topwear: UploadFile = File(...),
     bottomwear: UploadFile = File(...)
 ):
     """
-    Calculate match score and analysis between topwear and bottomwear items
+    Match top and bottom clothing items and evaluate their compatibility.
     """
+    # Increment the request counter
+    MATCH_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         # Process uploaded images
         top_content = await topwear.read()
@@ -1085,31 +1127,43 @@ async def match_outfit(
         # Generate suggestions
         suggestions = generate_suggestions(analysis)
         
-        # Prepare response
-        response = {
-            "match_score": overall_score,
-            "analysis": analysis,
-            "suggestions": suggestions,
-            "alternative_pairings": []
-        }
+        # Record match score metrics
+        MATCH_SCORES.observe(overall_score)
         
-        return response
+        # Record color harmony scores
+        if "color_harmony" in analysis:
+            COLOR_HARMONY_SCORES.observe(analysis["color_harmony"]["score"])
         
+        # Record style consistency scores
+        if "style_consistency" in analysis:
+            STYLE_CONSISTENCY_SCORES.observe(analysis["style_consistency"]["score"])
+        
+        # Measure processing time
+        processing_time = time.time() - start_time
+        MATCH_PROCESSING_TIME.observe(processing_time)
+        
+        return MatchResponse(
+            match_score=overall_score,
+            analysis=analysis,
+            suggestions=suggestions,
+            alternative_pairings=[]
+        )
     except Exception as e:
-        logger.error(f"Error processing match request: {str(e)}")
+        # Increment error counter
+        MATCH_ERRORS.inc()
+        
+        logger.error(f"Error in match operation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing match request: {str(e)}")
 
 @app.post("/compute_match", response_model=MatchResponse)
 async def compute_match(request: MatchRequest):
     """
-    Calculate match score based on preprocessed data
-    
-    Args:
-        request: MatchRequest object with all necessary preprocessed data
-        
-    Returns:
-        MatchResponse with match score and analysis
+    Compute match based on preprocessed data.
     """
+    # Increment the request counter
+    MATCH_REQUESTS.inc()
+    
+    start_time = time.time()
     try:
         logger.info("Processing match from preprocessed data")
         
@@ -1296,18 +1350,32 @@ async def compute_match(request: MatchRequest):
         # Generate suggestions
         suggestions = generate_suggestions(analysis)
         
-        # Prepare response
-        response = {
-            "match_score": overall_score,
-            "analysis": analysis,
-            "suggestions": suggestions,
-            "alternative_pairings": []
-        }
+        # Record match score metrics
+        MATCH_SCORES.observe(overall_score)
         
-        return response
+        # Record color harmony scores if available
+        if "color_harmony" in analysis:
+            COLOR_HARMONY_SCORES.observe(analysis["color_harmony"]["score"])
         
+        # Record style consistency scores if available
+        if "style_consistency" in analysis:
+            STYLE_CONSISTENCY_SCORES.observe(analysis["style_consistency"]["score"])
+        
+        # Measure processing time
+        processing_time = time.time() - start_time
+        MATCH_PROCESSING_TIME.observe(processing_time)
+        
+        return MatchResponse(
+            match_score=overall_score,
+            analysis=analysis,
+            suggestions=suggestions,
+            alternative_pairings=None
+        )
     except Exception as e:
-        logger.error(f"Error processing compute_match request: {str(e)}")
+        # Increment error counter
+        MATCH_ERRORS.inc()
+        
+        logger.error(f"Error in compute_match operation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing match request: {str(e)}")
 
 # Run the app if executed directly

@@ -48,6 +48,15 @@ scrape_configs:
         labels:
           service: 'feature-iep'
       
+      - targets: ['match-iep:8008']
+        labels:
+          service: 'match-iep'
+      - targets: ['reco-data-iep:8007']
+        labels:
+          service: 'reco-data-iep'
+      - targets: ['ppl-detector-iep:8009']
+        labels:
+          service: 'ppl-detector-iep'
 
   # Docker container metrics
   - job_name: 'docker'
