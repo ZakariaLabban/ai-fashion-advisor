@@ -6,11 +6,13 @@ import numpy as np
 import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
 from ultralytics import YOLO
+# Import Prometheus libraries
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,35 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Define Prometheus metrics
+DETECTION_REQUESTS = Counter(
+    'detection_requests_total', 
+    'Total number of detection requests processed'
+)
+DETECTION_ERRORS = Counter(
+    'detection_errors_total', 
+    'Total number of errors during detection'
+)
+DETECTION_PROCESSING_TIME = Histogram(
+    'detection_processing_seconds', 
+    'Time spent processing detection requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+ITEMS_DETECTED = Counter(
+    'items_detected_total', 
+    'Total number of clothing items detected',
+    ['class_name']
+)
+MODEL_LOAD_TIME = Gauge(
+    'model_load_time_seconds', 
+    'Time taken to load the model'
+)
+DETECTION_CONFIDENCE = Histogram(
+    'detection_confidence', 
+    'Confidence scores of detected items',
+    buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
 )
 
 # Get model path from environment variable or use default
@@ -80,12 +111,18 @@ async def startup_event():
     
     logger.info(f"Loading detection model from {MODEL_PATH}")
     try:
+        start_time = time.time()
+        
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
         
         # Load the YOLO model
         detection_model = YOLO(MODEL_PATH)
-        logger.info("Detection model loaded successfully")
+        
+        load_time = time.time() - start_time
+        MODEL_LOAD_TIME.set(load_time)
+        
+        logger.info(f"Detection model loaded successfully in {load_time:.2f} seconds")
     except Exception as e:
         logger.error(f"Failed to load detection model: {e}")
         # We won't raise here to allow the app to start, but endpoints will fail
@@ -99,6 +136,11 @@ async def health_check():
             content={"status": "unhealthy", "message": "Model not loaded"}
         )
     return {"status": "healthy", "model": "YOLOv8 Detection"}
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest())
 
 @app.post("/detect", response_model=DetectionResponse)
 async def detect_clothing(
@@ -117,8 +159,12 @@ async def detect_clothing(
     Returns:
         DetectionResponse with list of detections and metadata
     """
+    # Increment counter for total requests
+    DETECTION_REQUESTS.inc()
+    
     # Check if model is loaded
     if detection_model is None:
+        DETECTION_ERRORS.inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     # Use specified confidence or default
@@ -132,6 +178,7 @@ async def detect_clothing(
         image = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
         
         if image is None:
+            DETECTION_ERRORS.inc()
             raise HTTPException(status_code=400, detail="Invalid image file")
         
         # Get image dimensions
@@ -151,14 +198,22 @@ async def detect_clothing(
                 class_id = int(box.cls[0])
                 conf = float(box.conf[0])
                 
+                # Record confidence metric
+                DETECTION_CONFIDENCE.observe(conf)
+                
                 # Check if in desired classes & meets confidence threshold
                 if class_id in DESIRED_CLASSES and conf >= conf_threshold:
                     # Make sure we can get the bounding box coordinates
                     try:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         
+                        class_name = DESIRED_CLASSES[class_id]
+                        
+                        # Count detected items by class
+                        ITEMS_DETECTED.labels(class_name=class_name).inc()
+                        
                         detection = DetectionResult(
-                            class_name=DESIRED_CLASSES[class_id],
+                            class_name=class_name,
                             class_id=class_id,
                             confidence=conf,
                             bbox=[x1, y1, x2, y2],
@@ -185,6 +240,9 @@ async def detect_clothing(
         # Calculate processing time
         processing_time = time.time() - start_time
         
+        # Record processing time
+        DETECTION_PROCESSING_TIME.observe(processing_time)
+        
         return DetectionResponse(
             detections=detections,
             processing_time=processing_time,
@@ -192,6 +250,9 @@ async def detect_clothing(
         )
     
     except Exception as e:
+        # Increment error counter
+        DETECTION_ERRORS.inc()
+        
         logger.error(f"Error during detection: {e}")
         import traceback
         logger.error(traceback.format_exc())

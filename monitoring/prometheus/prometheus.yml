@@ -38,6 +38,9 @@ scrape_configs:
       - targets: ['frontend:80']
         labels:
           service: 'frontend'
+      - targets: ['detection-iep:8001']
+        labels:
+          service: 'detection-iep'
 
   # Docker container metrics
   - job_name: 'docker'
