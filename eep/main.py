@@ -954,7 +954,7 @@ async def process_detection(client: httpx.AsyncClient, image_data: bytes, reques
         
         # Call the detection service
         resp = await client.post(
-            f"{DETECTION_SERVICE_URL}/detect", 
+            f"{DETECTION_SERVICE_URL}/detect",
             files=files,
             data=data,
             timeout=SERVICE_TIMEOUT
@@ -995,7 +995,7 @@ async def process_style(client: httpx.AsyncClient, image_data: bytes, request_id
         
         # Call the style service
         resp = await client.post(
-            f"{STYLE_SERVICE_URL}/classify", 
+            f"{STYLE_SERVICE_URL}/classify",
             files=files,
             timeout=SERVICE_TIMEOUT
         )
@@ -1174,6 +1174,577 @@ async def check_people_in_image(client: httpx.AsyncClient, image_contents: bytes
         logger.error(f"Error counting people in image {filename}: {e}")
         return (0, None)  # On error, assume no people and don't show warning
 
+def generate_result_html(request_id, original_img, annotated_img, detections, styles, processing_time, timestamp, people_warning=None):
+    """Generate HTML for displaying analysis results"""
+    
+    # Define clothing types that can be used for recommendations
+    reco_capable_classes = ["Shirt", "Jumpsuit", "Pants", "Shorts", "Pants/Shorts", "Skirt", "Dress"]
+    
+    # Create HTML for people warning if applicable
+    people_warning_html = ""
+    if people_warning:
+        people_warning_html = f'''
+        <div class="warning-box">
+            <div class="warning-icon"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="warning-message">
+                <p>{people_warning}</p>
+            </div>
+        </div>
+        '''
+    
+    styles_html = ""
+    for style in styles:
+        confidence_percent = style["confidence"] * 100 if isinstance(style, dict) else style.confidence * 100
+        style_name = style["style_name"] if isinstance(style, dict) else style.style_name
+        styles_html += f'''
+        <div class="style-item">
+            <span class="style-name">{style_name}</span>
+            <div class="confidence-bar">
+                <div class="confidence-fill" style="width: {confidence_percent}%;"></div>
+            </div>
+            <span class="confidence-value">{confidence_percent:.1f}%</span>
+        </div>
+        '''
+    
+    detections_html = ""
+    for i, detection in enumerate(detections):
+        if isinstance(detection, dict):
+            class_name = detection["class_name"]
+            confidence = detection["confidence"]
+            crop_path = detection.get("crop_path", "")
+            features = detection.get("features", [])
+            color_histogram = detection.get("color_histogram", [])
+        else:
+            class_name = detection.class_name
+            confidence = detection.confidence
+            crop_path = detection.crop_path or ""
+            features = detection.features or []
+            color_histogram = detection.color_histogram or []
+            
+        # Truncate features and histogram for display
+        features_preview = str(features[:5]) + ("..." if len(features) > 5 else "")
+        histogram_preview = str(color_histogram[:5]) + ("..." if len(color_histogram) > 5 else "")
+        
+        detections_html += f'''
+        <div class="detection-box" id="detection-{i}">
+            <div class="detection-header">
+                <h3>{class_name} (Confidence: {confidence:.2f})</h3>
+            </div>
+            
+            <img src="{crop_path}" alt="{class_name}" class="detection-image">
+            
+            <div class="features-box">
+                <p><strong>Features:</strong></p>
+                <div id="features_{i}" class="features-preview">{features_preview}</div>
+                <button onclick="toggleFeatures('features_{i}')" class="toggle-btn">Show More</button>
+                
+                <p><strong>Color Histogram:</strong></p>
+                <div id="histogram_{i}" class="histogram-preview">{histogram_preview}</div>
+                <button onclick="toggleFeatures('histogram_{i}')" class="toggle-btn">Show More</button>
+            </div>
+        '''
+        
+        # Add recommendation buttons for supported garment types
+        if class_name in reco_capable_classes:
+            item_type = "topwear" if class_name in ["Shirt", "Jumpsuit"] else "bottomwear"
+            detections_html += f'''
+            <div class="recommendation-options">
+                <button id="similar-btn-{i}" class="reco-button" onclick="showRecoOptions('{i}', '{class_name}', '{item_type}')">Find Similar</button>
+                <button id="matching-btn-{i}" class="reco-button matching" onclick="showRecoOptions('{i}', '{class_name}', '{item_type}', true)">Find Matching</button>
+            </div>
+            <div id="reco-modal-{i}" class="reco-modal">
+                <div class="reco-modal-content">
+                    <span class="reco-close" onclick="closeRecoModal('{i}')">&times;</span>
+                    <h3 id="reco-title-{i}">Find Similar Items</h3>
+                    
+                    <div class="reco-tabs">
+                        <button id="similar-tab-{i}" class="reco-tab active" onclick="switchOperation('{i}', false)">Find Similar</button>
+                        <button id="matching-tab-{i}" class="reco-tab" onclick="switchOperation('{i}', true)">Find Matching</button>
+                    </div>
+                    
+                    <form id="reco-form-{i}" action="/recommendation" method="post" target="_blank">
+                        <input type="hidden" name="request_id" value="{request_id}">
+                        <input type="hidden" name="detection_id" value="{i}">
+                        <input type="hidden" name="operation" id="operation-{i}" value="similarity">
+                        <input type="hidden" name="item_type" id="item-type-{i}" data-original-type="{item_type}" value="{item_type}">
+                        <input type="hidden" id="item-class-{i}" value="{class_name}">
+                        
+                        <div class="reco-form-row">
+                            <label for="gender-{i}">Gender:</label>
+                            <select name="gender" id="gender-{i}" class="reco-select">
+                                <option value="">Any</option>
+                                <option value="male">Men</option>
+                                <option value="female">Women</option>
+                            </select>
+                        </div>
+                        
+                        <div class="reco-form-row">
+                            <label for="style-{i}">Style:</label>
+                            <select name="style" id="style-{i}" class="reco-select">
+                                <option value="">Any</option>
+                                <option value="casual">Casual</option>
+                                <option value="formal">Formal</option>
+                                <option value="athletic wear">Athletic Wear</option>
+                                <option value="streetwear">Streetwear</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <button type="submit" id="submit-btn-{i}" class="reco-submit">Find Similar Items</button>
+                    </form>
+                </div>
+            </div>
+            '''
+        
+        detections_html += '</div>'
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Fashion Analysis Results</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                max-width: 1200px; 
+                margin: 0 auto; 
+                padding: 20px;
+                background-color: #f9f9f9;
+                color: #333;
+            }}
+            .container {{
+                padding: 20px;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+                position: relative;
+            }}
+            .back-btn {{
+                display: inline-block;
+                padding: 10px 15px;
+                background-color: #3498db;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: 500;
+                transition: all 0.3s ease;
+                position: absolute;
+                top: 10px;
+                left: 10px;
+            }}
+            .back-btn:hover {{
+                background-color: #2980b9;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }}
+            .warning-box {{
+                background-color: #fff3cd;
+                color: #856404;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px auto;
+                max-width: 800px;
+                display: flex;
+                align-items: flex-start;
+                border-left: 5px solid #ffeeba;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            }}
+            .warning-icon {{
+                font-size: 24px;
+                margin-right: 15px;
+                color: #e0a800;
+            }}
+            .warning-message {{
+                flex: 1;
+                font-size: 14px;
+                line-height: 1.5;
+            }}
+            .images-container {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 20px;
+                margin-bottom: 30px;
+            }}
+            .image-box {{
+                flex: 1;
+                min-width: 300px;
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+                padding: 15px;
+                text-align: center;
+            }}
+            .image-box h3 {{
+                margin-top: 0;
+                color: #3498db;
+            }}
+            .image-box img {{
+                max-width: 100%;
+                max-height: 400px;
+                object-fit: contain;
+                border-radius: 5px;
+            }}
+            .styles-container {{
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+                padding: 20px;
+                margin-bottom: 30px;
+            }}
+            .style-item {{
+                display: flex;
+                align-items: center;
+                margin-bottom: 15px;
+            }}
+            .style-name {{
+                min-width: 150px;
+                font-weight: bold;
+            }}
+            .confidence-bar {{
+                flex-grow: 1;
+                height: 20px;
+                background-color: #eee;
+                border-radius: 10px;
+                margin: 0 15px;
+                overflow: hidden;
+            }}
+            .confidence-fill {{
+                height: 100%;
+                background-color: #3498db;
+                border-radius: 10px;
+            }}
+            .confidence-value {{
+                min-width: 60px;
+                text-align: right;
+            }}
+            .detections-container {{
+                margin-bottom: 30px;
+            }}
+            .detection-box {{
+                background-color: white;
+                padding: 20px;
+                margin-bottom: 15px;
+                border-radius: 8px;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            }}
+            .detection-header {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 10px;
+            }}
+            .detection-image {{
+                max-width: 150px;
+                max-height: 150px;
+                border: 1px solid #ddd;
+                margin-right: 15px;
+                float: left;
+                border-radius: 5px;
+            }}
+            .features-box {{
+                background-color: #f5f5f5;
+                padding: 15px;
+                border-radius: 5px;
+                margin-top: 10px;
+                overflow: auto;
+                clear: both;
+            }}
+            .features-preview, .histogram-preview {{
+                font-family: monospace;
+                white-space: pre-wrap;
+                background-color: #f8f8f8;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                margin-top: 5px;
+                max-height: 100px;
+                overflow-y: auto;
+            }}
+            .toggle-btn {{
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 5px;
+                cursor: pointer;
+                margin-top: 5px;
+                font-size: 0.8em;
+            }}
+            .toggle-btn:hover {{
+                background-color: #2980b9;
+            }}
+            .metadata {{
+                font-size: 0.9em;
+                color: #666;
+                margin-top: 30px;
+                padding: 15px;
+                border-top: 1px solid #ddd;
+                background-color: #f1f1f1;
+                border-radius: 5px;
+            }}
+            
+            /* Recommendation styles */
+            .recommendation-options {{
+                margin-top: 15px;
+                display: flex;
+                gap: 10px;
+            }}
+            .reco-button {{
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 0.9em;
+            }}
+            .reco-button.matching {{
+                background-color: #e74c3c;
+            }}
+            .reco-button.active, .reco-tab.active {{
+                box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.5);
+                font-weight: bold;
+            }}
+            .reco-button:hover {{
+                opacity: 0.9;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }}
+            .reco-tabs {{
+                display: flex;
+                margin-bottom: 15px;
+                border-bottom: 1px solid #ddd;
+            }}
+            .reco-tab {{
+                flex: 1;
+                background-color: #f8f8f8;
+                border: none;
+                padding: 10px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border-radius: 5px 5px 0 0;
+            }}
+            .reco-tab:first-child {{
+                background-color: #3498db;
+                color: white;
+            }}
+            .reco-tab:last-child {{
+                background-color: #e74c3c;
+                color: white;
+            }}
+            .reco-tab.active {{
+                border-bottom: 3px solid #2980b9;
+                font-weight: bold;
+            }}
+            .reco-tab:hover {{
+                background-color: #e9e9e9;
+            }}
+            .reco-tab:first-child:hover {{
+                background-color: #2980b9;
+            }}
+            .reco-tab:last-child:hover {{
+                background-color: #c0392b;
+            }}
+            .reco-modal {{
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.5);
+                z-index: 1000;
+                overflow: auto;
+            }}
+            .reco-modal-content {{
+                background-color: white;
+                margin: 10% auto;
+                padding: 20px;
+                border-radius: 8px;
+                width: 80%;
+                max-width: 500px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                position: relative;
+            }}
+            .reco-close {{
+                position: absolute;
+                top: 10px;
+                right: 15px;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+            }}
+            .reco-form-row {{
+                margin-bottom: 15px;
+            }}
+            .reco-form-row label {{
+                display: block;
+                margin-bottom: 5px;
+                font-weight: 500;
+            }}
+            .reco-select {{
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }}
+            .reco-submit {{
+                background-color: #2ecc71;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: 500;
+                width: 100%;
+                margin-top: 10px;
+            }}
+            .reco-submit:hover {{
+                background-color: #27ae60;
+            }}
+        </style>
+        <script>
+            function toggleFeatures(id) {{
+                const el = document.getElementById(id);
+                if (el.style.maxHeight === '100px' || el.style.maxHeight === '') {{
+                    el.style.maxHeight = 'none';
+                }} else {{
+                    el.style.maxHeight = '100px';
+                }}
+            }}
+            
+            function showRecoOptions(id, className, itemType, isMatching = false) {{
+                // Show the modal
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'block';
+                
+                // Update the title
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+                
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    // Make sure item_type is set correctly for similarity
+                    const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                    itemTypeField.value = itemType;
+                }}
+                
+                // Add visual indicators for mode
+                const similarBtn = document.getElementById(`similar-btn-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-btn-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update form attributes based on operation
+                const form = document.getElementById(`reco-form-${{id}}`);
+                form.reset(); // Reset any previous selections
+            }}
+            
+            function closeRecoModal(id) {{
+                const modal = document.getElementById(`reco-modal-${{id}}`);
+                modal.style.display = 'none';
+            }}
+            
+            function switchOperation(id, isMatching) {{
+                // Set the operation value
+                const operationField = document.getElementById(`operation-${{id}}`);
+                operationField.value = isMatching ? 'matching' : 'similarity';
+                
+                // Get the item type
+                const itemTypeField = document.getElementById(`item-type-${{id}}`);
+                const currentType = itemTypeField.getAttribute('data-original-type');
+                
+                // For matching, set appropriate item_type
+                if (isMatching) {{
+                    itemTypeField.value = currentType === 'topwear' ? 'bottomwear' : 'topwear';
+                }} else {{
+                    itemTypeField.value = currentType;
+                }}
+                
+                // Update visual indicators
+                const similarBtn = document.getElementById(`similar-tab-${{id}}`);
+                const matchingBtn = document.getElementById(`matching-tab-${{id}}`);
+                
+                if (isMatching) {{
+                    similarBtn.classList.remove('active');
+                    matchingBtn.classList.add('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Matching Items';
+                }} else {{
+                    similarBtn.classList.add('active');
+                    matchingBtn.classList.remove('active');
+                    document.getElementById(`submit-btn-${{id}}`).textContent = 'Find Similar Items';
+                }}
+                
+                // Update the title
+                const className = document.getElementById(`item-class-${{id}}`).value;
+                const title = document.getElementById(`reco-title-${{id}}`);
+                title.textContent = isMatching ? `Find Items to Match with ${{className}}` : `Find Similar ${{className}}s`;
+            }}
+            
+            // Close modal when clicking outside content
+            window.onclick = function(event) {{
+                if (event.target.className === 'reco-modal') {{
+                    event.target.style.display = 'none';
+                }}
+            }}
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <a href="/" class="back-btn">Back to Home</a>
+                <h1>Fashion Analysis Results</h1>
+            </div>
+            
+            {people_warning_html}
+            
+            <div class="images-container">
+                <div class="image-box">
+                    <h3>Original Image</h3>
+                    <img src="{original_img}" alt="Original Image">
+                </div>
+                <div class="image-box">
+                    <h3>Annotated Image</h3>
+                    <img src="{annotated_img}" alt="Annotated Image" onerror="this.src='{original_img}'; this.title='Annotated image not available'">
+                </div>
+            </div>
+            
+            <div class="styles-container">
+                <h2>Style Classification</h2>
+                {styles_html}
+            </div>
+            
+            <div class="detections-container">
+                <h2>Clothing Items Detected ({len(detections)})</h2>
+                {detections_html}
+            </div>
+            
+            <div class="metadata">
+                <p><strong>Request ID:</strong> {request_id}</p>
+                <p><strong>Processing Time:</strong> {processing_time:.2f} seconds</p>
+                <p><strong>Timestamp:</strong> {timestamp}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    
+    return html
+
 @app.post("/analyze")
 async def analyze_image(request: Request, file: UploadFile = File(...)):
     """Web endpoint for analyzing clothing in an image."""
@@ -1339,11 +1910,11 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         error_html = f"""
         <html>
             <head><title>Error</title></head>
-            <body>
+        <body>
                 <h1>Error Processing Image</h1>
                 <p>Sorry, an error occurred: {str(e)}</p>
                 <a href="/">Back to Home</a>
-            </body>
+        </body>
         </html>
         """
         return HTMLResponse(content=error_html, status_code=500)
@@ -1359,49 +1930,125 @@ async def api_analyze_image(file: UploadFile = File(...)):
     try:
         # Generate request ID
         request_id = str(uuid.uuid4())
+        logger.info(f"[{request_id}] Starting API analysis for file: {file.filename}")
         
-        # Read the uploaded file
+        # Read uploaded file
         contents = await file.read()
         
-        # Save the original file
-        filename = f"{request_id}_{file.filename}"
-        image_path = await save_uploaded_image(contents, filename)
+        # Save the original image
+        image_path = await save_uploaded_image(contents, file.filename)
+        relative_image_path = f"/static/uploads/{os.path.basename(image_path)}"
         
-        # Process the image
         async with httpx.AsyncClient() as client:
-            # Process with IEP
-            form_data = {
-                "include_crops": str(include_crops).lower(),
+            # Check for multiple people in the image
+            person_count, warning = await check_people_in_image(client, contents, file.filename)
+            if warning:
+                logger.info(f"[{request_id}] Multiple people detected in image: {person_count} people")
+            
+            # 1. Call detection IEP
+            try:
+                detections_raw = await process_detection(client, contents, request_id)
+            except Exception as e:
+                logger.error(f"[{request_id}] Detection error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Detection service error: {str(e)}")
+            
+            # 2. Call style IEP (in parallel with feature extraction)
+            style_task = asyncio.create_task(process_style(client, contents, request_id))
+            
+            # 3. Process each detection to extract features
+            detections = []
+            feature_tasks = []
+            
+            for i, det in enumerate(detections_raw):
+                # Save crop image if available
+                crop_path = None
+                if det.get('crop_data'):
+                    crop_path = await save_crop_image(
+                        det['crop_data'], 
+                        det['class_name'], 
+                        i, 
+                        request_id
+                    )
+                    
+                    # Create task for feature extraction from the crop
+                    crop_data = base64.b64decode(det['crop_data'])
+                    task = process_feature_extraction(client, crop_data, request_id, i)
+                    feature_tasks.append((i, task))
+                
+                # Create detection info (without features yet)
+                detection = DetectionInfo(
+                    class_name=det['class_name'],
+                    class_id=det['class_id'],
+                    confidence=det['confidence'],
+                    bbox=det['bbox'],
+                    crop_path=crop_path
+                )
+                detections.append(detection)
+            
+            # 4. Wait for style results
+            try:
+                styles_raw = await style_task
+                styles = [StyleInfo(**style) for style in styles_raw]
+            except Exception as e:
+                logger.error(f"[{request_id}] Style classification error: {str(e)}")
+                # Use a default empty style list
+                styles = []
+            
+            # 5. Wait for all feature extraction tasks and add results to detections
+            for i, task in feature_tasks:
+                try:
+                    features_result = await task
+                    detections[i].features = features_result['features']
+                    detections[i].color_histogram = features_result['color_histogram']
+                except Exception as e:
+                    logger.error(f"[{request_id}] Failed to extract features for detection {i}: {e}")
+                    # Continue without features - don't fail the whole request
+            
+            # 6. Create annotated image
+            annotated_path = await annotate_image(image_path, detections)
+            
+            # Calculate total processing time
+            processing_time = time.time() - start_time
+            API_PROCESSING_TIME.labels(endpoint="/api/analyze").observe(processing_time)
+            
+            # Store analysis results for recommendation endpoint
+            analysis_data = {
+                "request_id": request_id,
+                "original_image_path": relative_image_path,
+                "annotated_image_path": annotated_path,
+                "detections": [d.dict() for d in detections],
+                "styles": [s.dict() for s in styles],
+                "processing_time": processing_time,
+                "timestamp": datetime.now().isoformat(),
+                "people_warning": warning
             }
+            analysis_results_store[request_id] = analysis_data
             
-            if confidence is not None:
-                form_data["confidence"] = str(confidence)
-            
-            files = {"file": (file.filename, contents, file.content_type)}
-            
-            response = await client.post(
-                f"{PPL_DETECTOR_SERVICE_URL}/detect",
-                files=files,
-                data=form_data
+            # Create the response object
+            response = AnalysisResponse(
+                request_id=request_id,
+                original_image_path=relative_image_path,
+                annotated_image_path=annotated_path,
+                detections=detections,
+                styles=styles,
+                processing_time=processing_time,
+                timestamp=datetime.now().isoformat()
             )
             
-            if response.status_code != 200:
-                logger.error(f"People detection failed: {response.text}")
-                raise HTTPException(status_code=response.status_code, detail="People detection failed")
+            # Add warning about multiple people if applicable
+            response_dict = response.dict()
+            if warning:
+                response_dict["people_warning"] = warning
             
-            # Get the detection results
-            detection_results = response.json()
-            
-            # Measure processing time
-            processing_time = time.time() - start_time
-            
-            # Include total processing time
-            detection_results["total_processing_time"] = processing_time
-            
-            return detection_results
+            # Return as a regular dict
+            return response_dict
     
     except Exception as e:
-        logger.error(f"Error in people detection: {e}")
+        # Track API errors
+        API_ERRORS.labels(endpoint="/api/analyze", status_code=500).inc()
+        
+        logger.error(f"Error during API image analysis: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @app.post("/count_people", tags=["People Detection"])
