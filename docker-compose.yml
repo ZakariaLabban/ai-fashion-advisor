@@ -131,7 +131,7 @@ services:
     volumes:
       - ./reco_data_iep:/app
       - ./reco_data_iep/ca.pem:/app/ca.pem
-      - ./reco_data_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
+      - ./reco_data_iep/auradataset-9137dfc389fc.json:/app/auradataset-9137dfc389fc.json
     env_file:
       - ./reco_data_iep/.env
     networks:
@@ -158,7 +158,7 @@ services:
       - "7020:8020"
     volumes:
       - ./text2image_iep:/app
-      - ./text2image_iep/auradataset-643b5a8d654e.json:/app/auradataset-643b5a8d654e.json
+      - ./text2image_iep/auradataset-9137dfc389fc.json:/app/auradataset-9137dfc389fc.json
     env_file:
       - ./text2image_iep/.env
     networks:
