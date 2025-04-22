@@ -180,76 +180,65 @@ class QueryResponse(BaseModel):
 
 @app.post("/text-search")
 async def stream_top_match(request: SearchRequest):
-    # Prometheus counter
+    # Increment the request counter
     TEXT_SEARCH_REQUESTS.inc()
-
+    
     start_time = time.time()
     try:
-        print(f"[LOG] Incoming query: {request.query}")
-
-        # 0️⃣  OpenAI fashion check
-        print("[LOG] Checking if query is fashion‑related …")
+        # Step 0: Check if query is clothing-related
         is_related = await is_clothing_related(request.query)
-        print(f"[LOG] is_clothing_related → {is_related}")
+        
         if not is_related:
+            # Track non-fashion queries
             NON_FASHION_QUERY_COUNTER.inc()
+            
             raise HTTPException(
-                status_code=400,
-                detail="Query is not fashion‑related. Try something like 'red dress' or 'blue denim jacket'."
+                status_code=400, 
+                detail="This query doesn't appear to be about clothing or fashion items. Please try a specific fashion-related query like 'red dress', 'blue denim jacket', or 'black leather boots'."
             )
-
-        # 1️⃣  CLIP embedding
-        print("[LOG] Generating CLIP embedding …")
+        
+        # Step 1: Encode text
         query_vector = get_text_embedding(request.query)
-        print(f"[LOG] Embedding length: {len(query_vector)}")
 
-        # 2️⃣  Qdrant search
-        print(f"[LOG] Searching Qdrant collection '{COLLECTION}' …")
+        # Step 2: Qdrant Search
         results = qdrant.search(
             collection_name=COLLECTION,
             query_vector=query_vector,
             limit=1,
             with_payload=True
         )
-        print(f"[LOG] Qdrant results: {results}")
+
         if not results:
+            # Track empty results
             EMPTY_RESULTS_COUNTER.inc()
-            raise HTTPException(404, "No matching fashion items found.")
+            
+            raise HTTPException(status_code=404, detail="No matching fashion items found. Please try a different fashion-related query.")
 
-        # 3️⃣  Extract image_id → filename
-        payload = results[0].payload
-        print(f"[LOG] Qdrant payload: {payload}")
-        image_id = payload.get("image_id")
-        if not image_id:
-            raise HTTPException(500, "Missing image_id in Qdrant payload.")
+        # Step 3: Convert to filename
+        image_id = results[0].payload["image_id"]
         filename = f"{image_id}.jpg"
-        print(f"[LOG] Resolved filename: {filename}")
 
-        # 4️⃣  Google Drive lookup
-        print("[LOG] Looking up file ID in Google Drive …")
+        # Step 4: Query Drive
         file_id = get_file_id_by_filename(filename)
-        print(f"[LOG] Drive file_id: {file_id}")
         if not file_id:
-            raise HTTPException(404, f"File '{filename}' not found in Drive.")
+            raise HTTPException(status_code=404, detail=f"File '{filename}' not found in Drive. Please try a different query.")
 
-        # 5️⃣  Stream image back
-        print("[LOG] Streaming image …")
+        # Step 5: Stream image back
         image_bytes = stream_image_from_drive(file_id)
-        print("[LOG] Image streamed successfully.")
         return StreamingResponse(image_bytes, media_type="image/jpeg")
 
     except HTTPException as e:
-        print(f"[ERROR] HTTPException: {e.status_code} – {e.detail}")
-        raise
+        # Don't double-count these as they're already tracked above
+        raise e
     except Exception as e:
+        # Increment error counter for unexpected errors
         TEXT_SEARCH_ERRORS.inc()
-        print(f"[ERROR] Unexpected exception: {e}")
-        raise HTTPException(500, f"Internal error: {e}")
+        
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing your request: {str(e)}")
     finally:
+        # Record processing time
         processing_time = time.time() - start_time
         TEXT_SEARCH_PROCESSING_TIME.observe(processing_time)
-        print(f"[LOG] Total processing time: {processing_time:.2f}s")
-
 
 @app.post("/check-query")
 async def check_clothing_query(request: SearchRequest):
