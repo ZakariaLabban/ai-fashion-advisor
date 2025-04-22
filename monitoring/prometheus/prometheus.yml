@@ -60,10 +60,10 @@ scrape_configs:
       - targets: ['virtual-tryon-iep:8004']
         labels:
           service: 'virtual-tryon-iep'
-      - targets: ['text2image-iep:8005']
+      - targets: ['text2image-iep:8020']
         labels:
           service: 'text2image-iep'
-      - targets: ['elegance-iep:8006']
+      - targets: ['elegance-iep:8005']
         labels:
           service: 'elegance-iep'
 
