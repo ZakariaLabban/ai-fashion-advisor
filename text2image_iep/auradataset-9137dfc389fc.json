@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "auradataset",
+  "private_key_id": "9137dfc389fccd4dda6c9207039534b0ff5185c8",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCwJDJL624KYSDv\nTRi4Ykm3wZ01wbK4SiQR6NDgApm6gmw+53ySi3yxfQPsBo/d3CNWrr2fNVM71k+W\nbf7VAXk2+e2m0944aevKwMGkn9YZxS8y5sYg8kZrjKhwHKMGouhkfJGmNij5T2gm\ng4kUqZHJ6yoMzC9cTyGrzTF13x7xbuBBgJHAbZkO1NduhqzpL82KP3NqcDs0qeE/\nqw/uzzIl5ktU2HJLHGjxdtCbIZFAZPiOaV0bg7WKo7IKLnyTZ9H0vwizapV6uxJ3\nEHCdgK0rfCVl4a3MnuhqNKJOeAXMw72DZTXfPVTVhki0OCNKcXUdVeM0XjhbxGXw\nRpzTvP91AgMBAAECggEACaBHcxCK0Gc7pcr56h+4UCIfuD+dnQaI6e/7iaEoFheJ\nGLdNaUkqt3IcgVe1dpDl3yzzC3eeVMjoS2a3qcaSwYn57nyp1RLtfNnjwJ5Z6h7K\n2XZfsblpLE5WU97Yxk99BvrWJIuABJSjSDw22l8kVXDe44P9evG50RoIaoeW+RI4\nZkdNb5Nef9TUXovMtj0dVW2dAtABiSBrw/E+nXRsM3ACjh38k472FzgeuG6ur6l+\nsVPFNydU3B2EdzHd4tar0xP9migo9XP6R3szF0ysqTjJtA7OXiCLcjWA4BGnzz29\n0GuTbBy3InEdRqp62Mf7U1ZUvwhcQV1DakuYlSQLmQKBgQDrDzEdalvd3G0gVMFM\n7NECJG2i7aD8BQYEH+vkerypWyMlO8P1rpIoojFqr+LQbzcwrJWopIPdrIvbEsw5\n/Q/D8G+5QtNTKFtaS1h88BxYei0cGf2AT1Ohkki0UqW12QzXmQ46hymHeg87XLR0\nkfnSfF9YvjO1F1+E0zSTlMC6jQKBgQC/1U+EPJDlHBGnn3fXBxMNwsdmqNmWCGWA\nhhIsioT1IATdxCyviRPqrfNpocku7SAOQ4O4KcoJwxuFXEX6s+VAXEBYzHYiG4IT\nwmAPX+dvF8Mt84P8uSTsmQmdwfuTM39ztrezfZGpPQWgceCBjvIUSi3XDX+jjXpL\n48Nd5jhSiQKBgCkDdpNmWm8kpdnNUAkHDRTtnD+gbMVsbvdLRpKQI9j88O3vNqro\ncdIrMqol1FKABUY15ssNIYENOT3ZUs8Pa6/JhQTzNwI8eWwQ13i9QITjlHlhw4ye\nyr3XU147SXSoUYhQyV3G9aUQ1BWMgGQSkF98mfpW/ZisYls/qt3RR6uFAoGAZ9L9\nXGajTTzp2T0X0UtE5re60DcmvGsC9JKbl3vJBho0SAp63O5l1ygai9tCVaGFLfMg\ngTYs4Se153HPdiaTN0g2k1jlvwQAXM1gzDFtwtSrkF0x3EAgWeViLP3mOP8wReJo\nfj7B7UTXnMTFa5mAL7cOJExr/or928ED5fhKF3ECgYEA1f1nKNvQQDDSC/mgv8/f\nYwf8DuqqBccVxZWQ8QZ+OciSOSz+fdNC1xxagOaMT9oGJH4UywEohI8NUhMvVE4f\nL3KN6h/WJ13Yhc4QVnJM80sS6/lIFVYYoULqml2ru/ybUVdDQvVyoq++JfGfO+BJ\nVD/uDVth1+Ar/5LAfyYhEZg=\n-----END PRIVATE KEY-----\n",
+  "client_email": "drice-access@auradataset.iam.gserviceaccount.com",
+  "client_id": "111450599782353837367",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/drice-access%40auradataset.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
