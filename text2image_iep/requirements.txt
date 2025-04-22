@@ -3,7 +3,7 @@ torch==2.1.0+cpu
 fastapi
 uvicorn[standard]
 transformers
-qdrant-client == 1.13.6
+qdrant-client == 1.13.3
 google-api-python-client
 google-auth
 google-auth-oauthlib
