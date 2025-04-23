@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from pydantic import BaseModel
 from transformers import CLIPProcessor, CLIPModel
 from qdrant_client import QdrantClient
@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 import os
 import openai
 import json
+import time
+from prometheus_client import Counter, Histogram, generate_latest
 
 load_dotenv()
 
@@ -27,11 +29,43 @@ openai.api_key = openai_api_key
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
 clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", cache_dir="./models")
 
+# === Define Prometheus metrics ===
+TEXT_TO_IMAGE_REQUESTS = Counter(
+    'text_to_image_search_requests_total',
+    'Total number of text-to-image search requests processed'
+)
+TEXT_TO_IMAGE_ERRORS = Counter(
+    'text_to_image_search_errors_total', 
+    'Total number of errors during text-to-image search processing'
+)
+TEXT_TO_IMAGE_PROCESSING_TIME = Histogram(
+    'text_to_image_processing_seconds', 
+    'Time spent processing text-to-image search requests',
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+)
+TEXT_EMBEDDING_GENERATION_TIME = Histogram(
+    'text_embedding_generation_seconds', 
+    'Time spent generating text embeddings',
+    buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]
+)
+NON_FASHION_QUERY_COUNTER = Counter(
+    'non_fashion_query_total', 
+    'Total number of non-fashion queries rejected'
+)
+EMPTY_SEARCH_RESULTS = Counter(
+    'empty_search_results_total', 
+    'Total number of searches with empty results'
+)
+
 def get_text_embedding(text: str):
+    start_time = time.time()
     inputs = clip_processor(text=[text], return_tensors="pt")
     with torch.no_grad():
         embedding = clip_model.get_text_features(**inputs)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+    
+    # Record embedding generation time
+    TEXT_EMBEDDING_GENERATION_TIME.observe(time.time() - start_time)
     return embedding[0].cpu().tolist()
 
 # === Connect to Qdrant ===
@@ -71,6 +105,7 @@ async def is_clothing_related(query: str) -> bool:
     # Only apply basic length check
     if not query or len(query) > 100:
         print(f"Query rejected by length check: '{query}'")
+        NON_FASHION_QUERY_COUNTER.inc()
         return False
     
     try:
@@ -125,6 +160,7 @@ RESPOND WITH ONLY "yes" OR "no".
         
         if not is_valid:
             print(f"Query rejected by OpenAI: '{query}'")
+            NON_FASHION_QUERY_COUNTER.inc()
         
         return is_valid
         
@@ -132,6 +168,7 @@ RESPOND WITH ONLY "yes" OR "no".
         # If there's an error with OpenAI, reject the query for safety
         print(f"Error checking if query is clothing-related via OpenAI: {str(e)}")
         print(f"Rejecting query due to OpenAI error: '{query}'")
+        NON_FASHION_QUERY_COUNTER.inc()
         return False  # No fallback, just reject the query
 
 # === Request Schema ===
@@ -144,6 +181,10 @@ class QueryResponse(BaseModel):
 
 @app.post("/text-search")
 async def stream_top_match(request: SearchRequest):
+    # Increment the request counter
+    TEXT_TO_IMAGE_REQUESTS.inc()
+    start_time = time.time()
+    
     try:
         # Step 0: Check if query is clothing-related
         is_related = await is_clothing_related(request.query)
@@ -166,6 +207,7 @@ async def stream_top_match(request: SearchRequest):
         )
 
         if not results:
+            EMPTY_SEARCH_RESULTS.inc()
             raise HTTPException(status_code=404, detail="No matching fashion items found. Please try a different fashion-related query.")
 
         # Step 3: Convert to filename
@@ -175,15 +217,26 @@ async def stream_top_match(request: SearchRequest):
         # Step 4: Query Drive
         file_id = get_file_id_by_filename(filename)
         if not file_id:
+            EMPTY_SEARCH_RESULTS.inc()
             raise HTTPException(status_code=404, detail=f"File '{filename}' not found in Drive. Please try a different query.")
 
         # Step 5: Stream image back
         image_bytes = stream_image_from_drive(file_id)
+        
+        # Record total processing time
+        TEXT_TO_IMAGE_PROCESSING_TIME.observe(time.time() - start_time)
+        
         return StreamingResponse(image_bytes, media_type="image/jpeg")
 
     except HTTPException as e:
+        # Record total processing time and increment error counter
+        TEXT_TO_IMAGE_PROCESSING_TIME.observe(time.time() - start_time)
+        TEXT_TO_IMAGE_ERRORS.inc()
         raise e
     except Exception as e:
+        # Record total processing time and increment error counter
+        TEXT_TO_IMAGE_PROCESSING_TIME.observe(time.time() - start_time)
+        TEXT_TO_IMAGE_ERRORS.inc()
         raise HTTPException(status_code=500, detail=f"An error occurred while processing your request: {str(e)}")
 
 @app.post("/check-query")
@@ -208,6 +261,11 @@ async def check_clothing_query(request: SearchRequest):
             "is_clothing_related": False,
             "message": f"Error checking query: {str(e)}"
         }
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return PlainTextResponse(generate_latest(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.get("/health")
 async def health_check():

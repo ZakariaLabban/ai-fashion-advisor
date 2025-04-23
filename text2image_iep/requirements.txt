@@ -13,5 +13,6 @@ pillow
 python-dotenv
 openai==0.28.0
 numpy==1.24.3
+prometheus-client>=0.16.0
 
 
