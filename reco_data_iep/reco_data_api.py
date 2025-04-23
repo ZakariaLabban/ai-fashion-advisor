@@ -97,7 +97,7 @@ MYSQL_CONFIG = {
 
 QDRANT_URL = keyvault.get_secret("QDRANT-URL")
 QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY")
-COLLECTION_NAME = keyvault.get_secret("COLLECTION-NAME")
+COLLECTION_NAME = keyvault.get_secret("COLLECTION")
 
 SEGMENTED_FOLDER_ID = keyvault.get_secret("SEGMENTED-FOLDER-ID")
 FULL_FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
