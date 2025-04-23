@@ -11,10 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
       
     - name: Set up environment
       run: |
+        # Debug information
+        echo "Current directory: $(pwd)"
+        echo "Directory contents: $(ls -la)"
+        
         # Create .env file from GitHub Secrets
         echo "# Environment file generated from GitHub Secrets" > .env
         echo "FASHN_AI_API_KEY=${{ secrets.FASHN_AI_API_KEY }}" >> .env
@@ -35,25 +40,65 @@ jobs:
         # In docker-compose, these paths are set to the container paths, not the local paths
         echo "MYSQL_SSL_CA=/app/ca.pem" >> .env
         echo "SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json" >> .env
+        
+        # Display .env file (with secrets redacted)
+        echo "Environment file created with required variables."
     
     - name: Set up service account files
       run: |
+        # Check if secrets are available
+        if [ -z "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" ]; then
+          echo "Error: SERVICE_ACCOUNT_FILE_CONTENT secret is not set!"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.MYSQL_SSL_CA_CONTENT }}" ]; then
+          echo "Error: MYSQL_SSL_CA_CONTENT secret is not set!"
+          exit 1
+        fi
+      
         # Create directories if they don't exist
         mkdir -p reco_data_iep
         mkdir -p text2image_iep
         
+        # Debug information
+        echo "Created directories:"
+        ls -la
+        
         # Decode and create the service account files in both locations
-        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > reco_data_iep/auradataset-a28919b443a7.json
-        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > text2image_iep/auradataset-a28919b443a7.json
+        echo "Creating service account files..."
+        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > reco_data_iep/auradataset-a28919b443a7.json || { echo "Error decoding service account file content"; exit 1; }
+        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > text2image_iep/auradataset-a28919b443a7.json || { echo "Error decoding service account file content"; exit 1; }
         
         # Create the MySQL SSL CA file
-        echo "${{ secrets.MYSQL_SSL_CA_CONTENT }}" | base64 -d > reco_data_iep/ca.pem
+        echo "Creating MySQL SSL CA file..."
+        echo "${{ secrets.MYSQL_SSL_CA_CONTENT }}" | base64 -d > reco_data_iep/ca.pem || { echo "Error decoding MySQL SSL CA content"; exit 1; }
         
-        # Verify files were created
+        # Verify files were created and show their sizes
+        echo "Verifying created files:"
         ls -la reco_data_iep/
         ls -la text2image_iep/
         
-    - name: Build and run application
-      # Your build and deployment steps here
+        # Check file contents (without revealing sensitive data)
+        echo "Checking JSON file structure (first few lines):"
+        head -n 2 reco_data_iep/auradataset-a28919b443a7.json
+        
+        echo "Checking CA file structure (file info only):"
+        file reco_data_iep/ca.pem
+        
+    - name: Verify Docker installation
       run: |
+        # Check if Docker is installed and running
+        docker --version || { echo "Docker not found!"; exit 1; }
+        docker-compose --version || { echo "Docker Compose not found!"; exit 1; }
+        docker ps || { echo "Docker daemon not running!"; exit 1; }
+        
+    - name: Build and run application
+      run: |
+        # Show docker-compose file (with secrets redacted)
+        echo "Docker compose file contents:"
+        grep -v "SECRET\|PASSWORD" docker-compose.yml || true
+        
+        # Run docker-compose with detailed output
+        docker-compose config
         docker-compose up -d 
