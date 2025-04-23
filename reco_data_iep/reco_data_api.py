@@ -23,7 +23,7 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()  # Load from .env file
+load_dotenv(override=True)  # Load from .env file but allow environment variables to override
 
 def find_file_id_in_drive(file_name: str, folder_id: str):
     query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"

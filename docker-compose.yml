@@ -139,6 +139,17 @@ services:
     environment:
       - MYSQL_SSL_CA=/app/ca.pem
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - GOOGLE_FOLDER_ID=${GOOGLE_FOLDER_ID}
+      - SEGMENTED_FOLDER_ID=${SEGMENTED_FOLDER_ID}
+      - FULL_FOLDER_ID=${FULL_FOLDER_ID}
+      - COLLECTION_NAME=${COLLECTION_NAME}
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
     networks:
       - app-network
       
@@ -168,6 +179,8 @@ services:
       - ./.env
     environment:
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
+      - GOOGLE_FOLDER_ID=${GOOGLE_FOLDER_ID}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     networks:
       - app-network
       

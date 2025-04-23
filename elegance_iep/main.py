@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Configure OpenAI API
 client = AsyncOpenAI(

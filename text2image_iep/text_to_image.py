@@ -15,7 +15,8 @@ import json
 import time
 from prometheus_client import Counter, Histogram, generate_latest
 
-load_dotenv()
+# Load environment variables
+load_dotenv(override=True)  # Allow environment variables to override .env files if they exist
 
 app = FastAPI()
 

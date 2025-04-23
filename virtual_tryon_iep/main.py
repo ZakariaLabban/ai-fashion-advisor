@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)  # Allow environment variables to override .env files if they exist
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -1,0 +1,59 @@
+name: Deploy Application
+
+on:
+  push:
+    branches: [ actions ]
+  pull_request:
+    branches: [ actions ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      
+    - name: Set up environment
+      run: |
+        # Create .env file from GitHub Secrets
+        echo "# Environment file generated from GitHub Secrets" > .env
+        echo "FASHN_AI_API_KEY=${{ secrets.FASHN_AI_API_KEY }}" >> .env
+        echo "FASHN_AI_BASE_URL=${{ secrets.FASHN_AI_BASE_URL }}" >> .env
+        echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+        echo "QDRANT_URL=${{ secrets.QDRANT_URL }}" >> .env
+        echo "QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }}" >> .env
+        echo "COLLECTION_NAME=${{ secrets.COLLECTION_NAME }}" >> .env
+        echo "GOOGLE_FOLDER_ID=${{ secrets.GOOGLE_FOLDER_ID }}" >> .env
+        echo "MYSQL_HOST=${{ secrets.MYSQL_HOST }}" >> .env
+        echo "MYSQL_PORT=${{ secrets.MYSQL_PORT }}" >> .env
+        echo "MYSQL_USER=${{ secrets.MYSQL_USER }}" >> .env
+        echo "MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}" >> .env
+        echo "MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}" >> .env
+        echo "SEGMENTED_FOLDER_ID=${{ secrets.SEGMENTED_FOLDER_ID }}" >> .env
+        echo "FULL_FOLDER_ID=${{ secrets.FULL_FOLDER_ID }}" >> .env
+        
+        # In docker-compose, these paths are set to the container paths, not the local paths
+        echo "MYSQL_SSL_CA=/app/ca.pem" >> .env
+        echo "SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json" >> .env
+    
+    - name: Set up service account files
+      run: |
+        # Create directories if they don't exist
+        mkdir -p reco_data_iep
+        mkdir -p text2image_iep
+        
+        # Decode and create the service account files in both locations
+        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > reco_data_iep/auradataset-a28919b443a7.json
+        echo "${{ secrets.SERVICE_ACCOUNT_FILE_CONTENT }}" | base64 -d > text2image_iep/auradataset-a28919b443a7.json
+        
+        # Create the MySQL SSL CA file
+        echo "${{ secrets.MYSQL_SSL_CA_CONTENT }}" | base64 -d > reco_data_iep/ca.pem
+        
+        # Verify files were created
+        ls -la reco_data_iep/
+        ls -la text2image_iep/
+        
+    - name: Build and run application
+      # Your build and deployment steps here
+      run: |
+        docker-compose up -d 
