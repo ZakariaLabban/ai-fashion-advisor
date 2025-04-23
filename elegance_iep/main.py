@@ -13,15 +13,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
+import sys
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
 
-# Load environment variables
-load_dotenv(override=True)
+# Add the parent directory to sys.path to import the Azure Key Vault helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
+
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
 
 # Configure OpenAI API
 client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "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")
+    api_key=keyvault.get_secret("OPENAI-API-KEY", "default-key-placeholder")
 )
 
 # Configure logging
@@ -45,7 +49,7 @@ app.add_middleware(
 )
 
 # Static folders for conversation storage
-CONVERSATIONS_FOLDER = os.path.join(os.getenv("CONVERSATIONS_FOLDER", "/app/static/conversations"))
+CONVERSATIONS_FOLDER = os.path.join(keyvault.get_secret("CONVERSATIONS-FOLDER", "/app/static/conversations"))
 
 # Ensure folders exist
 os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
@@ -679,37 +683,11 @@ async def api_chat(request: ChatRequest):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    try:
-        # Test creating OpenAI client to ensure API key is valid
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-        # Check if conversations directory exists and is writable
-        if not os.path.exists(CONVERSATIONS_FOLDER):
-            os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
-            
-        # Write a test file to check permissions
-        test_file_path = os.path.join(CONVERSATIONS_FOLDER, "health_check_test.txt")
-        try:
-            with open(test_file_path, 'w') as f:
-                f.write("Health check test")
-            os.remove(test_file_path)
-        except Exception as e:
-            return {"status": "error", "message": f"File system error: {str(e)}"}
-        
-        return {
-            "status": "healthy",
-            "service": "elegance-chatbot",
-            "timestamp": datetime.now().isoformat(),
-            "conversations_folder": CONVERSATIONS_FOLDER,
-            "api_key_configured": bool(os.getenv("OPENAI_API_KEY"))
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "service": "elegance-chatbot",
-            "error": str(e)
-        }
+    return {
+        "status": "healthy", 
+        "service": "Elegance IEP",
+        "api_key_configured": bool(keyvault.get_secret("OPENAI-API-KEY"))
+    }
 
 @app.get("/fashion-knowledge")
 async def fashion_knowledge():

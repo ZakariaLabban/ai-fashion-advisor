@@ -42,6 +42,7 @@ services:
       - TEXT2IMAGE_SERVICE_URL=http://text2image-iep:8020
       - PPL_DETECTOR_SERVICE_URL=http://ppl-detector-iep:8009
       - SERVICE_TIMEOUT=60
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
 
@@ -57,6 +58,7 @@ services:
     environment:
       - MODEL_PATH=/app/models/yolov8_clothing_detection_segmentation.pt
       - CONFIDENCE_THRESHOLD=0.55
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
 
@@ -72,6 +74,7 @@ services:
     environment:
       - MODEL_PATH=/app/models/yolov8_style_model.pt
       - CONFIDENCE_THRESHOLD=0.3
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
 
@@ -86,6 +89,7 @@ services:
       - ./multitask_resnet50_finetuned.pt:/app/models/multitask_resnet50_finetuned.pt
     environment:
       - MODEL_PATH=/app/models/multitask_resnet50_finetuned.pt
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
       
@@ -102,11 +106,11 @@ services:
       - type: bind
         source: ./virtual_tryon_iep/static
         target: /app/static
-    env_file:
-      - ./.env
+      - type: bind
+        source: ./azure_keyvault_helper.py
+        target: /app/azure_keyvault_helper.py
     environment:
-      - FASHN_AI_API_KEY=${FASHN_AI_API_KEY}
-      - FASHN_AI_BASE_URL=${FASHN_AI_BASE_URL}
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
 
@@ -119,8 +123,9 @@ services:
     volumes:
       - ./elegance_iep:/app
       - ./elegance_iep/static:/app/static
+      - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
       
@@ -134,22 +139,11 @@ services:
       - ./reco_data_iep:/app
       - ./reco_data_iep/ca.pem:/app/ca.pem
       - ./reco_data_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
-    env_file:
-      - ./.env
+      - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
       - MYSQL_SSL_CA=/app/ca.pem
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
-      - MYSQL_HOST=${MYSQL_HOST}
-      - MYSQL_PORT=${MYSQL_PORT}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - GOOGLE_FOLDER_ID=${GOOGLE_FOLDER_ID}
-      - SEGMENTED_FOLDER_ID=${SEGMENTED_FOLDER_ID}
-      - FULL_FOLDER_ID=${FULL_FOLDER_ID}
-      - COLLECTION_NAME=${COLLECTION_NAME}
-      - QDRANT_URL=${QDRANT_URL}
-      - QDRANT_API_KEY=${QDRANT_API_KEY}
     networks:
       - app-network
       
@@ -161,8 +155,10 @@ services:
       - "7008:8008"
     volumes:
       - ./match_iep:/app
+      - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
       - SERVICE_TIMEOUT=30
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
       
@@ -175,12 +171,10 @@ services:
     volumes:
       - ./text2image_iep:/app
       - ./text2image_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
-    env_file:
-      - ./.env
+      - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
-      - GOOGLE_FOLDER_ID=${GOOGLE_FOLDER_ID}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
       
@@ -193,9 +187,11 @@ services:
     volumes:
       - ./ppl_detector_iep:/app
       - ./yolov8n.pt:/app/models/yolov8n.pt
+      - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
       - MODEL_PATH=/app/models/yolov8n.pt
       - CONFIDENCE_THRESHOLD=0.45
+      - AZURE_KEYVAULT_URL=${AZURE_KEYVAULT_URL}
     networks:
       - app-network
 

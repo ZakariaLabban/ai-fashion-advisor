@@ -14,5 +14,7 @@ python-dotenv
 openai==0.28.0
 numpy==1.24.3
 prometheus-client>=0.16.0
+azure-identity==1.14.0
+azure-keyvault-secrets==4.7.0
 
 

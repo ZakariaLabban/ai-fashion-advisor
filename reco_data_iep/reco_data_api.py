@@ -12,18 +12,24 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.service_account import Credentials
 import uvicorn
 from qdrant_client.http.models import MatchAny
-from dotenv import load_dotenv
+# from dotenv import load_dotenv  # Remove dotenv import
 import os
 import logging
 import time
+import sys
 # Import Prometheus client for metrics
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
+
+# Add the parent directory to sys.path to import the Azure Key Vault helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
+
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-load_dotenv(override=True)  # Load from .env file but allow environment variables to override
 
 def find_file_id_in_drive(file_name: str, folder_id: str):
     query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
@@ -81,29 +87,32 @@ DB_CONNECTION_ERRORS = Counter(
 
 # === Configs ===
 MYSQL_CONFIG = {
-    "host": os.getenv("MYSQL_HOST"),
-    "port": int(os.getenv("MYSQL_PORT")),
-    "user": os.getenv("MYSQL_USER"),
-    "password": os.getenv("MYSQL_PASSWORD"),
-    "database": os.getenv("MYSQL_DATABASE"),
-    "ssl_ca": os.getenv("MYSQL_SSL_CA")
+    "host": keyvault.get_secret("MYSQL-HOST"),
+    "port": int(keyvault.get_secret("MYSQL-PORT", "3306")),
+    "user": keyvault.get_secret("MYSQL-USER"),
+    "password": keyvault.get_secret("MYSQL-PASSWORD"),
+    "database": keyvault.get_secret("MYSQL-DATABASE"),
+    "ssl_ca": keyvault.get_file_from_base64_secret("MYSQL-SSL-CA-BASE64", "/app/ca.pem", prefix="mysql_ca_", suffix=".pem")
 }
 
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+QDRANT_URL = keyvault.get_secret("QDRANT-URL")
+QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY")
+COLLECTION_NAME = keyvault.get_secret("COLLECTION-NAME")
 
-SEGMENTED_FOLDER_ID = os.getenv("SEGMENTED_FOLDER_ID")
-FULL_FOLDER_ID = os.getenv("FULL_FOLDER_ID")
-
-# === Qdrant Client ===
-qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+SEGMENTED_FOLDER_ID = keyvault.get_secret("SEGMENTED-FOLDER-ID")
+FULL_FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
 
 # === Google Drive API Setup ===
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+SERVICE_ACCOUNT_FILE = keyvault.get_file_from_base64_secret("SERVICE-ACCOUNT-FILE-BASE64", 
+                                                           "/app/auradataset-a28919b443a7.json", 
+                                                           prefix="google_sa_", 
+                                                           suffix=".json")
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 drive_service = build("drive", "v3", credentials=creds)
+
+# === Qdrant Client ===
+qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 # === Models ===
 class SimilarityQuery(BaseModel):

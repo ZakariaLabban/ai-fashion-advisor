@@ -7,3 +7,5 @@ numpy==1.26.3
 opencv-python==4.9.0.80
 pillow==10.4.0
 aiofiles==23.2.1
+azure-identity==1.14.0
+azure-keyvault-secrets==4.7.0

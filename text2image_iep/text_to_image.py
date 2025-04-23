@@ -8,22 +8,27 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import torch
 import io
-from dotenv import load_dotenv
+# from dotenv import load_dotenv  # Remove dotenv import
 import os
 import openai
 import json
 import time
+import sys
 from prometheus_client import Counter, Histogram, generate_latest
 
-# Load environment variables
-load_dotenv(override=True)  # Allow environment variables to override .env files if they exist
+# Add the parent directory to sys.path to import the Azure Key Vault helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
+
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
 
 app = FastAPI()
 
 # === Configure OpenAI ===
-openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_api_key = keyvault.get_secret("OPENAI-API-KEY")
 if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY environment variable not set. Please set this variable before starting the application.")
+    raise ValueError("OPENAI-API-KEY secret not found in Azure Key Vault. Please add this secret before starting the application.")
 openai.api_key = openai_api_key
 
 # === Load CLIP model and processor ===
@@ -71,14 +76,17 @@ def get_text_embedding(text: str):
 
 # === Connect to Qdrant ===
 qdrant = QdrantClient(
-    url=os.getenv("QDRANT_URL"),
-    api_key=os.getenv("QDRANT_API_KEY")
+    url=keyvault.get_secret("QDRANT-URL"),
+    api_key=keyvault.get_secret("QDRANT-API-KEY")
 )
 COLLECTION = "text-to-image"
 
 # === Authenticate with Google Drive ===
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
-FOLDER_ID = os.getenv("FULL_FOLDER_ID")
+SERVICE_ACCOUNT_FILE = keyvault.get_file_from_base64_secret("SERVICE-ACCOUNT-FILE-BASE64", 
+                                                           "/app/auradataset-a28919b443a7.json", 
+                                                           prefix="google_sa_", 
+                                                           suffix=".json")
+FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 drive_service = build('drive', 'v3', credentials=credentials)
@@ -270,21 +278,25 @@ async def metrics():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     try:
-        # Test Qdrant connectivity
-        qdrant.get_collection(collection_name=COLLECTION)
-        
-        # Test Drive API
-        drive_service.files().list(q=f"'{FOLDER_ID}' in parents", pageSize=1).execute()
-        
+        # Check if we can access required secrets
+        if not keyvault.get_secret("OPENAI-API-KEY"):
+            return {"status": "unhealthy", "reason": "OPENAI-API-KEY not found in Key Vault"}
+            
+        if not keyvault.get_secret("QDRANT-URL"):
+            return {"status": "unhealthy", "reason": "QDRANT-URL not found in Key Vault"}
+            
+        if not keyvault.get_secret("FULL-FOLDER-ID"):
+            return {"status": "unhealthy", "reason": "FULL-FOLDER-ID not found in Key Vault"}
+            
+        # Check if CLIP model is loaded
+        if clip_model is None or clip_processor is None:
+            return {"status": "unhealthy", "reason": "CLIP model not loaded properly"}
+            
         return {
-            "status": "healthy", 
-            "service": "Text to Image IEP",
-            "models": ["CLIP-ViT-B/32"],
-            "collections": [COLLECTION]
+            "status": "healthy",
+            "model": "clip-vit-base-patch32",
+            "service": "text2image-iep"
         }
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e) }
+        return {"status": "unhealthy", "reason": str(e)}

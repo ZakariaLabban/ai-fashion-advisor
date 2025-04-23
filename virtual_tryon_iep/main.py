@@ -14,20 +14,24 @@ from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 import httpx
 import uuid
-from dotenv import load_dotenv
+import sys
 # Import Prometheus client for metrics
 from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest
 
-# Load environment variables from .env file
-load_dotenv(override=True)  # Allow environment variables to override .env files if they exist
+# Add the parent directory to sys.path to import the Azure Key Vault helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
+
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables
-FASHN_AI_API_KEY = os.getenv("FASHN_AI_API_KEY", "your_api_key_here")
-FASHN_AI_BASE_URL = os.getenv("FASHN_AI_BASE_URL", "https://api.fashn.ai/v1")
+# Get secrets from Azure Key Vault instead of environment variables
+FASHN_AI_API_KEY = keyvault.get_secret("FASHN-AI-API-KEY", "your_api_key_here")
+FASHN_AI_BASE_URL = keyvault.get_secret("FASHN-AI-BASE-URL", "https://api.fashn.ai/v1")
 
 logger.info(f"Using FASHN.AI API base URL: {FASHN_AI_BASE_URL}")
 logger.info(f"API Key configured: {'Yes' if FASHN_AI_API_KEY != 'your_api_key_here' else 'No'}")
