@@ -102,6 +102,8 @@ services:
       - type: bind
         source: ./virtual_tryon_iep/static
         target: /app/static
+    env_file:
+      - ./.env
     environment:
       - FASHN_AI_API_KEY=${FASHN_AI_API_KEY}
       - FASHN_AI_BASE_URL=${FASHN_AI_BASE_URL}
@@ -133,7 +135,10 @@ services:
       - ./reco_data_iep/ca.pem:/app/ca.pem
       - ./reco_data_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
     env_file:
-      - ./reco_data_iep/.env
+      - ./.env
+    environment:
+      - MYSQL_SSL_CA=/app/ca.pem
+      - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
     networks:
       - app-network
       
@@ -160,7 +165,9 @@ services:
       - ./text2image_iep:/app
       - ./text2image_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
     env_file:
-      - ./text2image_iep/.env
+      - ./.env
+    environment:
+      - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
     networks:
       - app-network
       

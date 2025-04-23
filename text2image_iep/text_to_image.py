@@ -76,8 +76,8 @@ qdrant = QdrantClient(
 COLLECTION = "text-to-image"
 
 # === Authenticate with Google Drive ===
-SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-FOLDER_ID = os.getenv("GOOGLE_FOLDER_ID")
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+FOLDER_ID = os.getenv("FULL_FOLDER_ID")
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 drive_service = build('drive', 'v3', credentials=credentials)

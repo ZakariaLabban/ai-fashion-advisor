@@ -1,6 +1,6 @@
 # AI Fashion Advisor
 
-
+> **IMPORTANT:** The project now uses a single `.env` file in the root directory instead of multiple .env files. Previously, separate .env files existed in `reco_data_iep`, `text2image_iep`, and `virtual_tryon_iep` directories. If you're migrating from a previous version, combine all environment variables into one file.
 
 A comprehensive system that combines computer vision and artificial intelligence to provide fashion analysis, virtual try-on, personalized style advice, and clothing recommendations.
 
@@ -105,34 +105,46 @@ This project uses several large model files that are not included in the reposit
    - `yolov8_style_model.pt`
    - `multitask_resnet50_finetuned.pt`
 
-3. **Create environment files**
+3. **Create environment file**
 
-   Create a main `.env` file in the root directory:
+   Create a single `.env` file in the root directory with all required environment variables:
 
    ```
-   FASHN_AI_API_KEY=your-fashn-api-key-here
+   # AI API Keys
+   FASHN_AI_API_KEY=your-fashn-api-key
    FASHN_AI_BASE_URL=https://api.fashn.ai/v1
-   OPENAI_API_KEY=your-openai-api-key-here
-   ```
+   OPENAI_API_KEY=your-openai-api-key
 
-   Create a `.env` file in the `reco_data_iep` directory:
-
-   ```
+   # Database Configuration
    MYSQL_HOST=your-mysql-host
    MYSQL_PORT=3306
    MYSQL_USER=username
    MYSQL_PASSWORD=password
    MYSQL_DATABASE=your_database
-   MYSQL_SSL_CA=/app/ca.pem
 
+   # Vector Database Configuration
    QDRANT_URL=https://your-qdrant-cloud-url
    QDRANT_API_KEY=your-qdrant-api-key
    COLLECTION_NAME=fashion_features
 
+   # Google Drive Configuration
    SEGMENTED_FOLDER_ID=your_google_drive_folder_id_for_segmented
    FULL_FOLDER_ID=your_google_drive_folder_id_for_full_images
-   SERVICE_ACCOUNT_FILE=auradataset-643b5a8d654e.json
+   SERVICE_ACCOUNT_FILE=auradataset-a28919b443a7.json
    ```
+
+   ### Migration from Multiple .env Files
+
+   If you're migrating from a previous version that used multiple .env files, follow these steps:
+
+   1. Create a new `.env` file in the project root directory
+   2. Copy all environment variables from these files to the new file:
+      - `.env` (root directory)
+      - `reco_data_iep/.env`
+      - `text2image_iep/.env`
+      - `virtual_tryon_iep/.env`
+   3. Remove duplicate entries if the same variable is defined in multiple files
+   4. You can safely delete the old .env files after migration
 
 4. **Obtain Google Drive API credentials**
 
