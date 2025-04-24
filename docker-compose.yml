@@ -42,7 +42,7 @@ services:
       - TEXT2IMAGE_SERVICE_URL=http://text2image-iep:8020
       - PPL_DETECTOR_SERVICE_URL=http://ppl-detector-iep:8009
       - SERVICE_TIMEOUT=60
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
 
@@ -61,7 +61,7 @@ services:
       - MODEL_BLOB_NAME=yolov8_clothing_detection_segmentation.pt
       - MODEL_CONTAINER_NAME=aurai-models
       - CONFIDENCE_THRESHOLD=0.55
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
 
@@ -80,7 +80,7 @@ services:
       - MODEL_BLOB_NAME=yolov8_style_model.pt
       - MODEL_CONTAINER_NAME=aurai-models
       - CONFIDENCE_THRESHOLD=0.3
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
 
@@ -98,7 +98,7 @@ services:
       - MODEL_PATH=/app/models/multitask_resnet50_finetuned.pt
       - MODEL_BLOB_NAME=multitask_resnet50_finetuned.pt
       - MODEL_CONTAINER_NAME=aurai-models
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
       
@@ -119,7 +119,7 @@ services:
         source: ./azure_keyvault_helper.py
         target: /app/azure_keyvault_helper.py
     environment:
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
 
@@ -134,7 +134,7 @@ services:
       - ./elegance_iep/static:/app/static
       - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
       
@@ -150,7 +150,7 @@ services:
       - ./reco_data_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
       - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
       - MYSQL_SSL_CA=/app/ca.pem
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
     networks:
@@ -183,7 +183,7 @@ services:
       - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
       - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
       
@@ -202,7 +202,7 @@ services:
       - MODEL_BLOB_NAME=yolov8n.pt
       - MODEL_CONTAINER_NAME=aurai-models
       - CONFIDENCE_THRESHOLD=0.45
-      - AZURE_KEYVAULT_URL=https://your-keyvault-name.vault.azure.net/
+      - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
 
