@@ -97,7 +97,15 @@ MYSQL_CONFIG = {
 
 QDRANT_URL = keyvault.get_secret("QDRANT-URL")
 QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY")
-COLLECTION_NAME = keyvault.get_secret("COLLECTION")
+COLLECTION_NAME = keyvault.get_secret("COLLECTION", "fashion")
+
+# Debug print statements
+print(f"DEBUG: COLLECTION name from Key Vault: '{COLLECTION_NAME}'")
+print(f"DEBUG: Available keys in Key Vault: {keyvault._cache.keys()}")
+
+if not COLLECTION_NAME:
+    logger.error("WARNING: COLLECTION value is empty, using default value 'fashion_features'")
+    COLLECTION_NAME = "fashion_features"  # Default fallback
 
 SEGMENTED_FOLDER_ID = keyvault.get_secret("SEGMENTED-FOLDER-ID")
 FULL_FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
