@@ -17,6 +17,12 @@ import torchvision.transforms as transforms
 from PIL import Image
 # Import Prometheus libraries
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
+# Import Azure Blob Helper
+from azure_blob_helper import AzureBlobHelper, download_model
+# Import Azure Key Vault Helper
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,8 +71,19 @@ COLOR_HISTOGRAM_BINS = Gauge(
     'Number of bins used in color histograms'
 )
 
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
+
 # Get model path from environment variable or use default
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/multitask_resnet50_finetuned.pt")
+# Azure Blob Storage configuration
+MODEL_BLOB_NAME = os.getenv("MODEL_BLOB_NAME", "multitask_resnet50_finetuned.pt")
+# Get container name from Key Vault or use default from environment variable
+MODEL_CONTAINER_NAME = keyvault.get_secret("MODEL-CONTAINER-NAME", 
+                                         os.getenv("MODEL_CONTAINER_NAME", "models"))
+# Get Azure Storage Account URL from Key Vault
+AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL", 
+                                              os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""))
 
 # Define the MultiTaskResNet50 model class
 class MultiTaskResNet50(nn.Module):
@@ -167,68 +184,78 @@ async def startup_event():
     """Load the MultiTaskResNet50 model at startup."""
     global feature_extractor
     
-    logger.info(f"Loading feature extractor model from {MODEL_PATH}")
+    start_time = time.time()
+    model_loaded = False
+    model_path = MODEL_PATH
+    
+    # Initialize the model without downloading ImageNet weights
+    feature_extractor = MultiTaskResNet50().eval()
+    
+    # Try to load from Azure Blob Storage first
     try:
-        start_time = time.time()
-        
-        # Initialize the model without downloading ImageNet weights
-        feature_extractor = MultiTaskResNet50().eval()
-        
-        # Check if model file exists
-        if not os.path.exists(MODEL_PATH):
-            logger.error(f"Model file not found at {MODEL_PATH}. Trying to use pretrained ImageNet weights.")
-            # If custom model doesn't exist, fallback to ImageNet weights
-            try:
-                # Create a new model with pretrained weights
-                temp_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-                # Transfer the weights
-                feature_extractor.base_model.load_state_dict(temp_model.state_dict(), strict=False)
-                logger.info("Successfully loaded ImageNet pretrained weights as fallback")
-                del temp_model  # Free memory
-            except Exception as e:
-                logger.error(f"Failed to load ImageNet weights: {e}")
-            return
-        
-        try:
-            logger.info(f"Loading custom model from {MODEL_PATH}...")
-            # Load the checkpoint with error handling
-            sd = torch.load(MODEL_PATH, map_location='cpu')
-            
-            filtered_sd = {}
-            for k, v in sd.items():
-                # Keep only base_model.* parameters
-                # (i.e. skip "gender_head", "master_head", etc.)
-                if "head" not in k:
-                    filtered_sd[k] = v
-            
-            # Load the filtered state dict
-            load_result = feature_extractor.load_state_dict(filtered_sd, strict=False)
-            logger.info(f"Custom feature extractor model loaded successfully with result: {load_result}")
-            
-            # Record model load time
-            load_time = time.time() - start_time
-            MODEL_LOAD_TIME.set(load_time)
-            
-        except Exception as e:
-            logger.error(f"Error loading model weights: {e}")
-            logger.error(f"Detailed traceback:")
-            import traceback
-            logger.error(traceback.format_exc())
-            logger.warning("Will use the model with pretrained ImageNet weights as fallback")
-            try:
-                # Create a new model with pretrained weights
-                temp_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-                # Transfer the weights
-                feature_extractor.base_model.load_state_dict(temp_model.state_dict(), strict=False)
-                logger.info("Successfully loaded ImageNet pretrained weights as fallback")
-                del temp_model  # Free memory
-            except Exception as e:
-                logger.error(f"Failed to load ImageNet weights: {e}")
+        logger.info(f"Attempting to download model from Azure Blob Storage: container={MODEL_CONTAINER_NAME}, blob={MODEL_BLOB_NAME}")
+        model_path = download_model(
+            container_name=MODEL_CONTAINER_NAME,
+            blob_name=MODEL_BLOB_NAME,
+            local_path=MODEL_PATH
+        )
+        logger.info(f"Successfully downloaded model from Azure Blob Storage to {model_path}")
+        model_loaded = True
     except Exception as e:
-        logger.error(f"Failed to initialize feature extractor model: {e}")
+        logger.warning(f"Failed to download model from Azure Blob Storage: {e}")
+        logger.info("Falling back to local model path if available")
+    
+    # Check if model file exists locally if Azure download failed
+    if not model_loaded and not os.path.exists(MODEL_PATH):
+        logger.error(f"Model file not found at {MODEL_PATH}. Trying to use pretrained ImageNet weights.")
+        # If custom model doesn't exist, fallback to ImageNet weights
+        try:
+            # Create a new model with pretrained weights
+            temp_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+            # Transfer the weights
+            feature_extractor.base_model.load_state_dict(temp_model.state_dict(), strict=False)
+            logger.info("Successfully loaded ImageNet pretrained weights as fallback")
+            del temp_model  # Free memory
+        except Exception as e:
+            logger.error(f"Failed to load ImageNet weights: {e}")
+        return
+    
+    # Load the custom model weights
+    try:
+        logger.info(f"Loading custom model from {model_path}...")
+        # Load the checkpoint with error handling
+        sd = torch.load(model_path, map_location='cpu')
+        
+        filtered_sd = {}
+        for k, v in sd.items():
+            # Keep only base_model.* parameters
+            # (i.e. skip "gender_head", "master_head", etc.)
+            if "head" not in k:
+                filtered_sd[k] = v
+        
+        # Load the filtered state dict
+        load_result = feature_extractor.load_state_dict(filtered_sd, strict=False)
+        logger.info(f"Custom feature extractor model loaded successfully with result: {load_result}")
+        
+        # Record model load time
+        load_time = time.time() - start_time
+        MODEL_LOAD_TIME.set(load_time)
+        
+    except Exception as e:
+        logger.error(f"Error loading model weights: {e}")
+        logger.error(f"Detailed traceback:")
         import traceback
         logger.error(traceback.format_exc())
-        # We won't raise here to allow the app to start, but endpoints will fail
+        logger.warning("Will use the model with pretrained ImageNet weights as fallback")
+        try:
+            # Create a new model with pretrained weights
+            temp_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+            # Transfer the weights
+            feature_extractor.base_model.load_state_dict(temp_model.state_dict(), strict=False)
+            logger.info("Successfully loaded ImageNet pretrained weights as fallback")
+            del temp_model  # Free memory
+        except Exception as e:
+            logger.error(f"Failed to load ImageNet weights: {e}")
 
 @app.get("/health")
 async def health_check():

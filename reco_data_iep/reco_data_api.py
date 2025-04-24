@@ -97,7 +97,7 @@ MYSQL_CONFIG = {
 
 QDRANT_URL = keyvault.get_secret("QDRANT-URL")
 QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY")
-COLLECTION_NAME = keyvault.get_secret("COLLECTION", "fashion")
+COLLECTION_NAME = keyvault.get_secret("COLLECTION", "fashion_features")
 
 # Debug print statements
 print(f"DEBUG: COLLECTION name from Key Vault: '{COLLECTION_NAME}'")

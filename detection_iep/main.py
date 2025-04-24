@@ -13,6 +13,12 @@ import torch
 from ultralytics import YOLO
 # Import Prometheus libraries
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
+# Import Azure Blob Helper
+from azure_blob_helper import AzureBlobHelper, download_model
+# Import Azure Key Vault Helper
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +69,18 @@ DETECTION_CONFIDENCE = Histogram(
     buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
 )
 
-# Get model path from environment variable or use default
+# Initialize Azure Key Vault helper
+keyvault = AzureKeyVaultHelper()
+
+# Azure Blob Storage configuration
+AZURE_MODEL_CONTAINER = keyvault.get_secret("MODEL-CONTAINER-NAME", 
+                                          os.getenv("MODEL_CONTAINER_NAME", "models"))
+AZURE_MODEL_BLOB = os.getenv("MODEL_BLOB_NAME", "yolov8_clothing_detection_segmentation.pt")
+# Get Azure Storage Account URL from Key Vault
+AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL", 
+                                              os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""))
+
+# Local model path (fallback or for downloaded model)
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/yolov8_clothing_detection_segmentation.pt")
 
 # Desired classes to detect
@@ -109,15 +126,41 @@ async def startup_event():
     """Load the YOLOv8 model at startup."""
     global detection_model
     
-    logger.info(f"Loading detection model from {MODEL_PATH}")
+    start_time = time.time()
+    model_loaded = False
+    model_path = MODEL_PATH
+    
+    # Try to load from Azure Blob Storage first
     try:
-        start_time = time.time()
-        
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
-        
-        # Load the YOLO model
-        detection_model = YOLO(MODEL_PATH)
+        logger.info(f"Attempting to download model from Azure Blob Storage: container={AZURE_MODEL_CONTAINER}, blob={AZURE_MODEL_BLOB}")
+        model_path = download_model(
+            container_name=AZURE_MODEL_CONTAINER,
+            blob_name=AZURE_MODEL_BLOB,
+            local_path=MODEL_PATH
+        )
+        logger.info(f"Successfully downloaded model from Azure Blob Storage to {model_path}")
+        model_loaded = True
+    except Exception as e:
+        logger.warning(f"Failed to download model from Azure Blob Storage: {e}")
+        logger.info("Falling back to local model path if available")
+    
+    # Fall back to local model if Azure download failed
+    if not model_loaded:
+        try:
+            if not os.path.exists(MODEL_PATH):
+                logger.error(f"Model file not found at {MODEL_PATH}")
+                return
+            
+            model_path = MODEL_PATH
+            model_loaded = True
+            logger.info(f"Using local model at {MODEL_PATH}")
+        except Exception as e:
+            logger.error(f"Failed to locate local model: {e}")
+            return
+    
+    # Load the YOLO model
+    try:
+        detection_model = YOLO(model_path)
         
         load_time = time.time() - start_time
         MODEL_LOAD_TIME.set(load_time)
