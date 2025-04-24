@@ -3,6 +3,23 @@ import tempfile
 import logging
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 from azure.identity import DefaultAzureCredential
+import sys
+
+# Import AzureKeyVaultHelper (handling different import scenarios)
+try:
+    # First try direct import (if in same directory)
+    from azure_keyvault_helper import AzureKeyVaultHelper
+except ImportError:
+    try:
+        # Then try relative import from parent directory
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from azure_keyvault_helper import AzureKeyVaultHelper
+    except ImportError:
+        # Last resort, try absolute import with project root
+        # Assuming the helper is in the project root
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        sys.path.append(root_dir)
+        from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,9 +42,15 @@ class AzureBlobHelper:
 
     def _initialize(self):
         """Initialize the Azure Blob Storage client"""
-        # Get Blob Storage connection string or account name from environment
-        connection_string = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-        account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
+        # Try to get storage account info from Key Vault first, then fall back to environment variables
+        keyvault = AzureKeyVaultHelper()
+        
+        # Get Blob Storage connection string or account name
+        connection_string = keyvault.get_secret("AZURE-STORAGE-CONNECTION-STRING", 
+                                               os.environ.get("AZURE_STORAGE_CONNECTION_STRING"))
+        
+        account_url = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL", 
+                                         os.environ.get("AZURE_STORAGE_ACCOUNT_URL"))
         
         try:
             if connection_string:
@@ -38,8 +61,8 @@ class AzureBlobHelper:
                 credential = DefaultAzureCredential()
                 self._client = BlobServiceClient(account_url=account_url, credential=credential)
             else:
-                logger.error("Neither AZURE_STORAGE_CONNECTION_STRING nor AZURE_STORAGE_ACCOUNT_URL is set")
-                raise ValueError("Either AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_URL must be set")
+                logger.error("Neither AZURE-STORAGE-CONNECTION-STRING nor AZURE-STORAGE-ACCOUNT-URL is available in Key Vault or environment")
+                raise ValueError("Either AZURE-STORAGE-CONNECTION-STRING or AZURE-STORAGE-ACCOUNT-URL must be set in Key Vault or environment")
                 
             logger.info("Successfully initialized Azure Blob Storage client")
         except Exception as e:

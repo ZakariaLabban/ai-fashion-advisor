@@ -76,9 +76,8 @@ keyvault = AzureKeyVaultHelper()
 AZURE_MODEL_CONTAINER = keyvault.get_secret("MODEL-CONTAINER-NAME", 
                                           os.getenv("MODEL_CONTAINER_NAME", "models"))
 AZURE_MODEL_BLOB = os.getenv("MODEL_BLOB_NAME", "yolov8_clothing_detection_segmentation.pt")
-# Get Azure Storage Account URL from Key Vault
-AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL", 
-                                              os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""))
+# Get Azure Storage Account URL from Key Vault only - no environment variable fallback
+AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL")
 
 # Local model path (fallback or for downloaded model)
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/yolov8_clothing_detection_segmentation.pt")

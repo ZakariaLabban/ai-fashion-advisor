@@ -79,9 +79,8 @@ MODEL_BLOB_NAME = os.getenv("MODEL_BLOB_NAME", "yolov8_style_model.pt")
 # Get container name from Key Vault or use default from environment variable
 MODEL_CONTAINER_NAME = keyvault.get_secret("MODEL-CONTAINER-NAME", 
                                          os.getenv("MODEL_CONTAINER_NAME", "models"))
-# Get Azure Storage Account URL from Key Vault
-AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL", 
-                                              os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""))
+# Get Azure Storage Account URL from Key Vault only - no environment variable fallback
+AZURE_STORAGE_ACCOUNT_URL = keyvault.get_secret("AZURE-STORAGE-ACCOUNT-URL")
 
 # Style classes
 STYLE_CLASSES = {
