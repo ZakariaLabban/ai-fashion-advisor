@@ -9,4 +9,5 @@ ultralytics>=8.0.0
 httpx>=0.25.0
 prometheus-client>=0.17.0
 azure-storage-blob==12.19.0
-azure-identity==1.15.0 
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0 

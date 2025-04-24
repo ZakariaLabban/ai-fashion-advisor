@@ -8,4 +8,7 @@ pillow>=10.0.0
 pydantic>=2.3.0
 opencv-python-headless>=4.8.0
 python-dotenv>=1.0.0
-prometheus-client>=0.17.0 
+prometheus-client>=0.17.0
+azure-storage-blob==12.19.0
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0 

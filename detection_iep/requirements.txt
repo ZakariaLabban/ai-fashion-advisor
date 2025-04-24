@@ -10,4 +10,5 @@ pydantic==2.6.1
 pillow==10.4.0
 prometheus-client==0.18.0
 azure-storage-blob==12.19.0
-azure-identity==1.15.0 
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0 
