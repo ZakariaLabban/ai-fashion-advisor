@@ -32,7 +32,7 @@ function Chatbot() {
   const suggestedQuestions = [
     {
       id: 1,
-      text: "What colors match well with navy blue outfit?",
+      text: "What goes well with anavy blue outfit?",
       icon: "palette",
       color: "bg-blue-500",
     },
