@@ -9,7 +9,16 @@ This directory contains tests for external API integrations used by the AI Fashi
 
 ## Configuration
 
-### Azure Key Vault (Recommended)
+### Credential Priority
+
+The tests follow this order of priority for credentials:
+
+1. **Azure Key Vault** (PRIMARY) - Tests will first attempt to retrieve secrets from Azure Key Vault
+2. **Environment Variables** (FALLBACK) - If a secret is not found in Azure Key Vault, tests will check environment variables
+
+This ensures that secret management is secure and centralized, while still allowing for local testing with environment variables when needed.
+
+### Azure Key Vault (Primary)
 
 These tests are configured to use Azure Key Vault for secrets management. The tests will look for secrets in the following format:
 
@@ -38,9 +47,9 @@ The tests use DefaultAzureCredential for authentication, which supports various 
 If a secret is not found in Azure Key Vault, the tests will fall back to using environment variables:
 
 ```bash
-# Qdrant
-export QDRANT_URL=https://your-qdrant-instance.com
-export QDRANT_API_KEY=your-api-key
+# Qdrant Cloud
+export QDRANT_URL=https://<cluster-id>.<region>.aws.cloud.qdrant.io:6333
+export QDRANT_API_KEY=your-qdrant-cloud-api-key
 
 # MySQL
 export MYSQL_HOST=your-mysql-host.aiven.com
@@ -56,6 +65,22 @@ export FASHN_AI_API_KEY=your-api-key
 # OpenAI
 export OPENAI_API_KEY=your-api-key
 ```
+
+### Service-Specific Configuration
+
+#### Qdrant Cloud
+
+For Qdrant Cloud, you need to provide:
+
+1. **QDRANT-URL**: The URL to your Qdrant Cloud cluster, which typically follows this format:
+   ```
+   https://<cluster-id>.<region>.aws.cloud.qdrant.io:6333
+   ```
+   Example: `https://abc123.us-east.aws.cloud.qdrant.io:6333`
+
+2. **QDRANT-API-KEY**: Your Qdrant Cloud API key, which you can find in the Qdrant Cloud dashboard.
+
+These values must be correctly configured in Azure Key Vault for the Qdrant tests to work.
 
 ## Dependencies
 
@@ -94,6 +119,16 @@ pytest -v tests/api/test_fashn_ai.py
 pytest -v tests/api/test_openai.py
 ```
 
+## Test Behavior
+
+These tests are designed to gracefully handle missing connections or credentials:
+
+1. **Missing Credentials**: Tests will be skipped if the necessary API keys or connection parameters are not found in Azure Key Vault or environment variables.
+
+2. **Missing Services**: Tests will be skipped if the services themselves are not available (e.g., if Qdrant is not running on the specified URL).
+
+This ensures that the test suite remains functional even when testing in environments where not all services are available.
+
 ## Test Markers
 
 These tests use the following pytest markers:
@@ -108,4 +143,5 @@ When adding tests for a new API:
 1. Create a new file with the naming convention `test_[api_name].py`
 2. Add appropriate fixtures for authentication and API clients
 3. Add tests for basic connectivity and core functionality
-4. Make sure to add proper cleanup to avoid leaving test data in production services 
+4. Make sure to add proper cleanup to avoid leaving test data in production services
+5. Use `pytest.skip()` for handling missing credentials or services 

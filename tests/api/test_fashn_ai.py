@@ -11,19 +11,33 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Try to import the Azure Key Vault helper, but don't fail if it's not available
+# Initialize variables with None to handle case where Azure Key Vault is not available
+FASHN_AI_API_URL = None
+FASHN_AI_API_KEY = None
+
+# Try to get credentials from Azure Key Vault
 try:
     from azure_keyvault_helper import AzureKeyVaultHelper
     # Initialize Azure Key Vault helper
     keyvault = AzureKeyVaultHelper()
-    # Get credentials from Azure Key Vault with environment variable fallback
-    FASHN_AI_API_URL = keyvault.get_secret("FASHN-AI-API-URL", os.getenv("FASHN_AI_API_URL", "https://api.fashn.ai/v1"))
-    FASHN_AI_API_KEY = keyvault.get_secret("FASHN-AI-API-KEY", os.getenv("FASHN_AI_API_KEY", None))
+    # Get credentials from Azure Key Vault
+    FASHN_AI_API_URL = keyvault.get_secret("FASHN-AI-API-URL")
+    FASHN_AI_API_KEY = keyvault.get_secret("FASHN-AI-API-KEY")
+    
+    print("Successfully retrieved FASHN.AI credentials from Azure Key Vault")
 except (ImportError, ValueError) as e:
-    print(f"Azure Key Vault not available: {e}. Using environment variables.")
-    # Fall back to environment variables
+    print(f"Azure Key Vault not available: {e}")
+
+# Only fall back to environment variables if Azure Key Vault didn't provide values
+if not FASHN_AI_API_URL:
     FASHN_AI_API_URL = os.getenv("FASHN_AI_API_URL", "https://api.fashn.ai/v1")
-    FASHN_AI_API_KEY = os.getenv("FASHN_AI_API_KEY", None)
+    if FASHN_AI_API_URL:
+        print("Using FASHN_AI_API_URL from environment variable")
+
+if not FASHN_AI_API_KEY:
+    FASHN_AI_API_KEY = os.getenv("FASHN_AI_API_KEY")
+    if FASHN_AI_API_KEY:
+        print("Using FASHN_AI_API_KEY from environment variable")
 
 # Path to test data
 TEST_DATA_DIR = Path(__file__).parent.parent / "data"

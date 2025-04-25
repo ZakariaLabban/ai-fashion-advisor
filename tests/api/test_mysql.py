@@ -11,25 +11,58 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Try to import the Azure Key Vault helper, but don't fail if it's not available
+# Initialize variables with None to handle case where Azure Key Vault is not available
+MYSQL_HOST = None
+MYSQL_PORT = None
+MYSQL_USER = None
+MYSQL_PASSWORD = None
+MYSQL_DATABASE = None
+
+# Try to get credentials from Azure Key Vault
 try:
     from azure_keyvault_helper import AzureKeyVaultHelper
     # Initialize Azure Key Vault helper
     keyvault = AzureKeyVaultHelper()
-    # Get credentials from Azure Key Vault with environment variable fallback
-    MYSQL_HOST = keyvault.get_secret("MYSQL-HOST", os.getenv("MYSQL_HOST", "localhost"))
-    MYSQL_PORT = int(keyvault.get_secret("MYSQL-PORT", os.getenv("MYSQL_PORT", "3306")))
-    MYSQL_USER = keyvault.get_secret("MYSQL-USER", os.getenv("MYSQL_USER", "root"))
-    MYSQL_PASSWORD = keyvault.get_secret("MYSQL-PASSWORD", os.getenv("MYSQL_PASSWORD", ""))
-    MYSQL_DATABASE = keyvault.get_secret("MYSQL-DATABASE", os.getenv("MYSQL_DATABASE", "fashion_advisor"))
+    # Get credentials from Azure Key Vault
+    MYSQL_HOST = keyvault.get_secret("MYSQL-HOST")
+    mysql_port_str = keyvault.get_secret("MYSQL-PORT")
+    MYSQL_PORT = int(mysql_port_str) if mysql_port_str else None
+    MYSQL_USER = keyvault.get_secret("MYSQL-USER")
+    MYSQL_PASSWORD = keyvault.get_secret("MYSQL-PASSWORD")
+    MYSQL_DATABASE = keyvault.get_secret("MYSQL-DATABASE")
+    
+    print("Successfully retrieved MySQL credentials from Azure Key Vault")
 except (ImportError, ValueError) as e:
-    print(f"Azure Key Vault not available: {e}. Using environment variables.")
-    # Fall back to environment variables
+    print(f"Azure Key Vault not available: {e}")
+
+# Only fall back to environment variables if Azure Key Vault didn't provide values
+if not MYSQL_HOST:
     MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
-    MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+    if MYSQL_HOST != "localhost":
+        print("Using MYSQL_HOST from environment variable")
+
+if not MYSQL_PORT:
+    try:
+        MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+        if MYSQL_PORT != 3306:
+            print("Using MYSQL_PORT from environment variable")
+    except (ValueError, TypeError):
+        MYSQL_PORT = 3306
+
+if not MYSQL_USER:
     MYSQL_USER = os.getenv("MYSQL_USER", "root")
+    if MYSQL_USER != "root":
+        print("Using MYSQL_USER from environment variable")
+
+if not MYSQL_PASSWORD:
     MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+    if MYSQL_PASSWORD:
+        print("Using MYSQL_PASSWORD from environment variable")
+
+if not MYSQL_DATABASE:
     MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "fashion_advisor")
+    if MYSQL_DATABASE != "fashion_advisor":
+        print("Using MYSQL_DATABASE from environment variable")
 
 @pytest.fixture
 def mysql_connection():

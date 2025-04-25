@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 # Add the parent directory to the Python path to import the Azure Key Vault helper
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -11,35 +12,67 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Try to import the Azure Key Vault helper, but don't fail if it's not available
+# Initialize variables with None to handle case where Azure Key Vault is not available
+QDRANT_URL = None
+QDRANT_API_KEY = None
+
+# Try to get credentials from Azure Key Vault
 try:
     from azure_keyvault_helper import AzureKeyVaultHelper
     # Initialize Azure Key Vault helper
     keyvault = AzureKeyVaultHelper()
-    # Get credentials from Azure Key Vault with environment variable fallback
-    QDRANT_URL = keyvault.get_secret("QDRANT-URL", os.getenv("QDRANT_URL", "http://localhost:6333"))
-    QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY", os.getenv("QDRANT_API_KEY", None))
+    # Get credentials from Azure Key Vault
+    QDRANT_URL = keyvault.get_secret("QDRANT-URL")
+    QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY")
+    
+    print("Successfully retrieved Qdrant Cloud credentials from Azure Key Vault")
 except (ImportError, ValueError) as e:
-    print(f"Azure Key Vault not available: {e}. Using environment variables.")
-    # Fall back to environment variables
-    QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
+    print(f"Azure Key Vault not available: {e}")
+
+# Only fall back to environment variables if Azure Key Vault didn't provide values
+if not QDRANT_URL:
+    QDRANT_URL = os.getenv("QDRANT_URL")
+    if QDRANT_URL:
+        print("Using QDRANT_URL from environment variable")
+
+if not QDRANT_API_KEY:
+    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+    if QDRANT_API_KEY:
+        print("Using QDRANT_API_KEY from environment variable")
 
 @pytest.fixture
 def qdrant_client():
     """Create a Qdrant client for testing."""
-    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    # Skip if URL or API key is not provided from either Azure Key Vault or environment variables
+    if not QDRANT_URL:
+        pytest.skip("QDRANT-URL not found in Azure Key Vault or QDRANT_URL environment variable not set")
+    
+    if not QDRANT_API_KEY:
+        pytest.skip("QDRANT-API-KEY not found in Azure Key Vault or QDRANT_API_KEY environment variable not set")
+        
+    # Create the client with timeout to avoid long waits if connection fails
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=10.0)
+    
+    # Check if Qdrant is available by making a simple API call
+    try:
+        # Use get_collections() to test connection
+        client.get_collections()
+    except ResponseHandlingException as e:
+        pytest.skip(f"Cannot connect to Qdrant Cloud: {e}")
+    except Exception as e:
+        pytest.skip(f"Unexpected error connecting to Qdrant Cloud: {e}")
+    
     return client
 
 @pytest.mark.live
 def test_qdrant_connection(qdrant_client):
     """Test the connection to Qdrant."""
-    # Get cluster info as a basic test
-    cluster_info = qdrant_client.get_cluster_info()
+    # Get collections as a basic test
+    collections = qdrant_client.get_collections()
     
-    # If we can get cluster info, the connection is working
-    assert cluster_info is not None
-    print(f"Connected to Qdrant cluster: {cluster_info}")
+    # If we can get collections, the connection is working
+    assert collections is not None
+    print(f"Connected to Qdrant Cloud. Available collections: {collections}")
 
 @pytest.mark.live
 def test_qdrant_basic_operations(qdrant_client):

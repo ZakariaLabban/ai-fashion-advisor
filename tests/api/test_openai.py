@@ -12,17 +12,26 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Try to import the Azure Key Vault helper, but don't fail if it's not available
+# Initialize variables with None to handle case where Azure Key Vault is not available
+OPENAI_API_KEY = None
+
+# Try to get credentials from Azure Key Vault
 try:
     from azure_keyvault_helper import AzureKeyVaultHelper
     # Initialize Azure Key Vault helper
     keyvault = AzureKeyVaultHelper()
-    # Get credentials from Azure Key Vault with environment variable fallback
-    OPENAI_API_KEY = keyvault.get_secret("OPENAI-API-KEY", os.getenv("OPENAI_API_KEY", None))
+    # Get credentials from Azure Key Vault
+    OPENAI_API_KEY = keyvault.get_secret("OPENAI-API-KEY")
+    
+    print("Successfully retrieved OpenAI API key from Azure Key Vault")
 except (ImportError, ValueError) as e:
-    print(f"Azure Key Vault not available: {e}. Using environment variables.")
-    # Fall back to environment variables
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", None)
+    print(f"Azure Key Vault not available: {e}")
+
+# Only fall back to environment variables if Azure Key Vault didn't provide values
+if not OPENAI_API_KEY:
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if OPENAI_API_KEY:
+        print("Using OPENAI_API_KEY from environment variable")
 
 @pytest.fixture
 def openai_client():
