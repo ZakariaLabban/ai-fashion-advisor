@@ -3,9 +3,9 @@
 This directory contains tests for external API integrations used by the AI Fashion Advisor:
 
 1. **Qdrant** - Vector database for similarity search
-2. **Aiven MySQL** - Relational database for structured data
-3. **FASHN.AI** - Fashion-specific AI services 
-4. **OpenAI** - Large language model and image generation
+2. **MySQL** - Relational database for structured data
+3. **FASHN.AI** - Fashion-specific AI services for virtual try-on
+4. **OpenAI** - Large language model for text generation
 
 ## Configuration
 
@@ -15,6 +15,7 @@ The tests follow this order of priority for credentials:
 
 1. **Azure Key Vault** (PRIMARY) - Tests will first attempt to retrieve secrets from Azure Key Vault
 2. **Environment Variables** (FALLBACK) - If a secret is not found in Azure Key Vault, tests will check environment variables
+3. **Docker Compose** (ADDITIONAL) - For Azure Key Vault URL, tests will also check the `docker-compose.yml` file
 
 This ensures that secret management is secure and centralized, while still allowing for local testing with environment variables when needed.
 
@@ -29,7 +30,7 @@ These tests are configured to use Azure Key Vault for secrets management. The te
 - `MYSQL-USER` - MySQL username
 - `MYSQL-PASSWORD` - MySQL password
 - `MYSQL-DATABASE` - MySQL database name
-- `FASHN-AI-API-URL` - FASHN.AI API URL
+- `FASHN-AI-BASE-URL` or `FASHN-AI-API-URL` - FASHN.AI API URL
 - `FASHN-AI-API-KEY` - FASHN.AI API key
 - `OPENAI-API-KEY` - OpenAI API key
 
@@ -59,28 +60,16 @@ export MYSQL_PASSWORD=your-password
 export MYSQL_DATABASE=fashion_advisor
 
 # FASHN.AI
-export FASHN_AI_API_URL=https://api.fashn.ai/v1
+export FASHN_AI_BASE_URL=https://api.fashn.ai/v1
 export FASHN_AI_API_KEY=your-api-key
 
 # OpenAI
 export OPENAI_API_KEY=your-api-key
 ```
 
-### Service-Specific Configuration
+### Docker Compose Integration
 
-#### Qdrant Cloud
-
-For Qdrant Cloud, you need to provide:
-
-1. **QDRANT-URL**: The URL to your Qdrant Cloud cluster, which typically follows this format:
-   ```
-   https://<cluster-id>.<region>.aws.cloud.qdrant.io:6333
-   ```
-   Example: `https://abc123.us-east.aws.cloud.qdrant.io:6333`
-
-2. **QDRANT-API-KEY**: Your Qdrant Cloud API key, which you can find in the Qdrant Cloud dashboard.
-
-These values must be correctly configured in Azure Key Vault for the Qdrant tests to work.
+For the Azure Key Vault URL, tests can now read from the `docker-compose.yml` file in the project root. This allows for a more seamless testing experience when working with dockerized services.
 
 ## Dependencies
 
@@ -127,6 +116,8 @@ These tests are designed to gracefully handle missing connections or credentials
 
 2. **Missing Services**: Tests will be skipped if the services themselves are not available (e.g., if Qdrant is not running on the specified URL).
 
+3. **Missing Image Files**: For tests requiring images (like FASHN.AI), the tests will create placeholder images or use default URLs if test images are not available.
+
 This ensures that the test suite remains functional even when testing in environments where not all services are available.
 
 ## Test Markers
@@ -135,6 +126,16 @@ These tests use the following pytest markers:
 
 - `api`: All API tests have this marker
 - `live`: Tests that require actual services to be running
+
+## API Test Details
+
+### FASHN.AI Tests
+
+The FASHN.AI tests focus on virtual try-on functionality, which is the primary capability we're using from this service. The tests use a polling approach to handle the asynchronous nature of the processing.
+
+### OpenAI Tests
+
+The OpenAI tests focus specifically on text-based chat completion functionality used by our fashion advisor system. We test basic connectivity and the ability to generate text responses to fashion-related prompts.
 
 ## Adding New API Tests
 
@@ -145,3 +146,4 @@ When adding tests for a new API:
 3. Add tests for basic connectivity and core functionality
 4. Make sure to add proper cleanup to avoid leaving test data in production services
 5. Use `pytest.skip()` for handling missing credentials or services 
+6. Import the `docker_env_reader` module to utilize Azure Key Vault URL from docker-compose.yml 
