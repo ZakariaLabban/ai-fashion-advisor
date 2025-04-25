@@ -1,33 +1,29 @@
 #!/bin/bash
 
-# Exit on error
+# Exit immediately if any command fails
 set -e
 
 # Navigate to the project directory
 cd /home/azureuser/ai-fashion-advisor
 
-# Stop all running containers
 echo "Stopping running containers..."
-docker-compose down
+docker-compose down || true
 
-# Configure git to use the token
-git config --global credential.helper store
-echo "https://${GITHUB_TOKEN}@github.com" > ~/.git-credentials
+# Ensure SSH agent is running and key is loaded
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_rsa
 
-# Pull latest changes
-echo "Pulling latest changes..."
+# Make sure the remote URL is set to SSH (safe to re-run)
+git remote set-url origin git@github.com:ZakariaLabban/ai-fashion-advisor.git
+
+echo "Pulling latest changes from 'actions' branch..."
 git pull origin actions
 
-# Rebuild and start containers
 echo "Rebuilding and starting containers..."
 docker-compose build --no-cache
 docker-compose up -d
 
-# Verify containers are running
 echo "Verifying containers are running..."
 docker-compose ps
 
-# Clean up credentials
-rm ~/.git-credentials
-
-echo "Deployment completed successfully!" 
+echo "✅ Deployment completed successfully!"

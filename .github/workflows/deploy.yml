@@ -8,9 +8,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.DEPLOY_PAT }}
 
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
@@ -20,7 +23,5 @@ jobs:
           if_key_exists: fail
 
       - name: Deploy to Azure VM
-        env:
-          GITHUB_TOKEN: ${{ secrets.DEPLOY_PAT }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "GITHUB_TOKEN=$GITHUB_TOKEN bash -s" < deploy.sh 
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'bash -s' < deploy.sh
