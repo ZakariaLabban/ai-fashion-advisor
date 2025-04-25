@@ -172,12 +172,19 @@ def test_fashn_ai_tryon_endpoint(fashn_ai_client):
             if status == "completed":
                 # Check the output
                 assert "output" in status_data, "No output in completed response"
-                assert "images" in status_data["output"], "No images in output"
-                assert len(status_data["output"]["images"]) > 0, "Empty images list in output"
                 
-                image_url = status_data["output"]["images"][0]
+                # Handle both old and new response formats
+                if isinstance(status_data["output"], list):
+                    # New format: output is a list of URLs
+                    assert len(status_data["output"]) > 0, "Empty output list"
+                    image_url = status_data["output"][0]
+                else:
+                    # Old format: output is a dict with images key
+                    assert "images" in status_data["output"], "No images in output"
+                    assert len(status_data["output"]["images"]) > 0, "Empty images list in output"
+                    image_url = status_data["output"]["images"][0]
+                
                 assert image_url.startswith("http"), f"Invalid image URL: {image_url}"
-                
                 print(f"Successfully completed virtual try-on, image URL: {image_url}")
                 break
             elif status == "failed":
