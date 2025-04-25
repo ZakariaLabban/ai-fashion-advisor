@@ -9,6 +9,7 @@ Options:
     --unit       Run unit tests only
     --integration Run integration tests only
     --e2e        Run end-to-end tests only
+    --api        Run API integration tests only
     --live       Run tests that require actual services to be running
     --all        Run all tests (default)
     --service=X  Run tests for a specific service (detection, style, feature, etc.)
@@ -56,6 +57,7 @@ def main():
     run_unit = False
     run_integration = False
     run_e2e = False
+    run_api = False
     run_live = False
     service = None
     args = []
@@ -70,6 +72,9 @@ def main():
             run_all = False
         elif arg == "--e2e":
             run_e2e = True
+            run_all = False
+        elif arg == "--api":
+            run_api = True
             run_all = False
         elif arg == "--live":
             run_live = True
@@ -97,6 +102,8 @@ def main():
             run_test_command(args, "integration", service)
         if run_e2e:
             run_test_command(args, "e2e", service)
+        if run_api:
+            run_test_command(args, "api", service)
         if run_live:
             run_test_command(args, None, service, live=True)
 
