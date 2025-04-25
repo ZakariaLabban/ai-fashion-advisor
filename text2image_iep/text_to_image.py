@@ -83,9 +83,12 @@ COLLECTION = "text-to-image"
 
 # === Authenticate with Google Drive ===
 SERVICE_ACCOUNT_FILE = keyvault.get_file_from_base64_secret("SERVICE-ACCOUNT-FILE-BASE64", 
-                                                           "/app/auradataset-a28919b443a7.json", 
+                                                           None,  # Don't use a default path
                                                            prefix="google_sa_", 
                                                            suffix=".json")
+if not SERVICE_ACCOUNT_FILE:
+    raise ValueError("Google service account credentials not found in Azure Key Vault. Please ensure the SERVICE-ACCOUNT-FILE-BASE64 secret is set.")
+
 FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
