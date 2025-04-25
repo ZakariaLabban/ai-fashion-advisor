@@ -112,9 +112,12 @@ FULL_FOLDER_ID = keyvault.get_secret("FULL-FOLDER-ID")
 
 # === Google Drive API Setup ===
 SERVICE_ACCOUNT_FILE = keyvault.get_file_from_base64_secret("SERVICE-ACCOUNT-FILE-BASE64", 
-                                                           "/app/auradataset-a28919b443a7.json", 
+                                                           None,  # Don't use a default path
                                                            prefix="google_sa_", 
                                                            suffix=".json")
+if not SERVICE_ACCOUNT_FILE:
+    raise ValueError("Google service account credentials not found in Azure Key Vault. Please ensure the SERVICE-ACCOUNT-FILE-BASE64 secret is set.")
+
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 drive_service = build("drive", "v3", credentials=creds)
