@@ -7,20 +7,29 @@ from mysql.connector import Error
 
 # Add the parent directory to the Python path to import the Azure Key Vault helper
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Initialize Azure Key Vault helper
-keyvault = AzureKeyVaultHelper()
-
-# Get credentials from Azure Key Vault with environment variable fallback
-MYSQL_HOST = keyvault.get_secret("MYSQL-HOST", os.getenv("MYSQL_HOST", "localhost"))
-MYSQL_PORT = int(keyvault.get_secret("MYSQL-PORT", os.getenv("MYSQL_PORT", "3306")))
-MYSQL_USER = keyvault.get_secret("MYSQL-USER", os.getenv("MYSQL_USER", "root"))
-MYSQL_PASSWORD = keyvault.get_secret("MYSQL-PASSWORD", os.getenv("MYSQL_PASSWORD", ""))
-MYSQL_DATABASE = keyvault.get_secret("MYSQL-DATABASE", os.getenv("MYSQL_DATABASE", "fashion_advisor"))
+# Try to import the Azure Key Vault helper, but don't fail if it's not available
+try:
+    from azure_keyvault_helper import AzureKeyVaultHelper
+    # Initialize Azure Key Vault helper
+    keyvault = AzureKeyVaultHelper()
+    # Get credentials from Azure Key Vault with environment variable fallback
+    MYSQL_HOST = keyvault.get_secret("MYSQL-HOST", os.getenv("MYSQL_HOST", "localhost"))
+    MYSQL_PORT = int(keyvault.get_secret("MYSQL-PORT", os.getenv("MYSQL_PORT", "3306")))
+    MYSQL_USER = keyvault.get_secret("MYSQL-USER", os.getenv("MYSQL_USER", "root"))
+    MYSQL_PASSWORD = keyvault.get_secret("MYSQL-PASSWORD", os.getenv("MYSQL_PASSWORD", ""))
+    MYSQL_DATABASE = keyvault.get_secret("MYSQL-DATABASE", os.getenv("MYSQL_DATABASE", "fashion_advisor"))
+except (ImportError, ValueError) as e:
+    print(f"Azure Key Vault not available: {e}. Using environment variables.")
+    # Fall back to environment variables
+    MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+    MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+    MYSQL_USER = os.getenv("MYSQL_USER", "root")
+    MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+    MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "fashion_advisor")
 
 @pytest.fixture
 def mysql_connection():

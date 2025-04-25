@@ -57,6 +57,15 @@ export FASHN_AI_API_KEY=your-api-key
 export OPENAI_API_KEY=your-api-key
 ```
 
+## Dependencies
+
+The dependencies for these tests are included in the main `tests/requirements.txt` file. Install them using:
+
+```bash
+# From the tests directory
+pip install -r requirements.txt
+```
+
 ## Running the Tests
 
 To run all API tests:

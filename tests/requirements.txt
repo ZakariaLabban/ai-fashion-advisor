@@ -14,4 +14,10 @@ pytest-docker==1.0.1
 tenacity==8.2.2
 fastapi==0.95.2
 pydantic==1.10.8
-aiohttp==3.8.5 
+aiohttp==3.8.5
+# Below are additional dependencies for API tests
+qdrant-client>=1.4.0
+mysql-connector-python>=8.0.0
+openai>=1.0.0
+azure-identity>=1.14.0
+azure-keyvault-secrets>=4.7.0 

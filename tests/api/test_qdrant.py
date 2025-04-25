@@ -7,17 +7,23 @@ from qdrant_client.http.models import Distance, VectorParams
 
 # Add the parent directory to the Python path to import the Azure Key Vault helper
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Initialize Azure Key Vault helper
-keyvault = AzureKeyVaultHelper()
-
-# Get credentials from Azure Key Vault with environment variable fallback
-QDRANT_URL = keyvault.get_secret("QDRANT-URL", os.getenv("QDRANT_URL", "http://localhost:6333"))
-QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY", os.getenv("QDRANT_API_KEY", None))
+# Try to import the Azure Key Vault helper, but don't fail if it's not available
+try:
+    from azure_keyvault_helper import AzureKeyVaultHelper
+    # Initialize Azure Key Vault helper
+    keyvault = AzureKeyVaultHelper()
+    # Get credentials from Azure Key Vault with environment variable fallback
+    QDRANT_URL = keyvault.get_secret("QDRANT-URL", os.getenv("QDRANT_URL", "http://localhost:6333"))
+    QDRANT_API_KEY = keyvault.get_secret("QDRANT-API-KEY", os.getenv("QDRANT_API_KEY", None))
+except (ImportError, ValueError) as e:
+    print(f"Azure Key Vault not available: {e}. Using environment variables.")
+    # Fall back to environment variables
+    QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 
 @pytest.fixture
 def qdrant_client():

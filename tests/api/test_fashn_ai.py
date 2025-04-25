@@ -7,17 +7,23 @@ import base64
 
 # Add the parent directory to the Python path to import the Azure Key Vault helper
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from azure_keyvault_helper import AzureKeyVaultHelper
 
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
-# Initialize Azure Key Vault helper
-keyvault = AzureKeyVaultHelper()
-
-# Get credentials from Azure Key Vault with environment variable fallback
-FASHN_AI_API_URL = keyvault.get_secret("FASHN-AI-API-URL", os.getenv("FASHN_AI_API_URL", "https://api.fashn.ai/v1"))
-FASHN_AI_API_KEY = keyvault.get_secret("FASHN-AI-API-KEY", os.getenv("FASHN_AI_API_KEY", None))
+# Try to import the Azure Key Vault helper, but don't fail if it's not available
+try:
+    from azure_keyvault_helper import AzureKeyVaultHelper
+    # Initialize Azure Key Vault helper
+    keyvault = AzureKeyVaultHelper()
+    # Get credentials from Azure Key Vault with environment variable fallback
+    FASHN_AI_API_URL = keyvault.get_secret("FASHN-AI-API-URL", os.getenv("FASHN_AI_API_URL", "https://api.fashn.ai/v1"))
+    FASHN_AI_API_KEY = keyvault.get_secret("FASHN-AI-API-KEY", os.getenv("FASHN_AI_API_KEY", None))
+except (ImportError, ValueError) as e:
+    print(f"Azure Key Vault not available: {e}. Using environment variables.")
+    # Fall back to environment variables
+    FASHN_AI_API_URL = os.getenv("FASHN_AI_API_URL", "https://api.fashn.ai/v1")
+    FASHN_AI_API_KEY = os.getenv("FASHN_AI_API_KEY", None)
 
 # Path to test data
 TEST_DATA_DIR = Path(__file__).parent.parent / "data"
@@ -26,7 +32,7 @@ TEST_DATA_DIR = Path(__file__).parent.parent / "data"
 def fashn_ai_client():
     """Create an httpx client for FASHN.AI API testing."""
     if not FASHN_AI_API_KEY:
-        pytest.skip("FASHN-AI-API-KEY secret not found in Azure Key Vault or FASHN_AI_API_KEY environment variable not set")
+        pytest.skip("FASHN-AI-API-KEY not found in Azure Key Vault or FASHN_AI_API_KEY environment variable not set")
         
     headers = {
         "Authorization": f"Bearer {FASHN_AI_API_KEY}",
