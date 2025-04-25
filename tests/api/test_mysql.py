@@ -8,6 +8,9 @@ from mysql.connector import Error
 # Add the parent directory to the Python path to import the Azure Key Vault helper
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+# Import helper to read from docker-compose.yml
+from tests.api.docker_env_reader import setup_azure_keyvault
+
 # Mark all tests in this file with the api marker
 pytestmark = pytest.mark.api
 
@@ -17,6 +20,9 @@ MYSQL_PORT = None
 MYSQL_USER = None
 MYSQL_PASSWORD = None
 MYSQL_DATABASE = None
+
+# Setup Azure Key Vault URL from environment or docker-compose.yml
+setup_azure_keyvault()
 
 # Try to get credentials from Azure Key Vault
 try:
