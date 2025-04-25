@@ -76,7 +76,7 @@ function FashionFinder() {
     },
     {
       id: 4,
-      text: "Show me some white sneakers",
+      text: "i want an all white outfit for Amr Diab's Concert",
       icon: "shoe-prints",
       color: "bg-purple-500",
     },

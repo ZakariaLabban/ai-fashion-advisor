@@ -146,13 +146,9 @@ services:
       - "7007:8007"
     volumes:
       - ./reco_data_iep:/app
-      - ./reco_data_iep/ca.pem:/app/ca.pem
-      - ./reco_data_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
       - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
       - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
-      - MYSQL_SSL_CA=/app/ca.pem
-      - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
     networks:
       - app-network
       
@@ -179,10 +175,8 @@ services:
       - "7020:8020"
     volumes:
       - ./text2image_iep:/app
-      - ./text2image_iep/auradataset-a28919b443a7.json:/app/auradataset-a28919b443a7.json
       - ./azure_keyvault_helper.py:/app/azure_keyvault_helper.py
     environment:
-      - SERVICE_ACCOUNT_FILE=/app/auradataset-a28919b443a7.json
       - AZURE_KEYVAULT_URL=https://secret-env.vault.azure.net/
     networks:
       - app-network
