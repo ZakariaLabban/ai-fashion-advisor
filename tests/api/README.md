@@ -116,7 +116,7 @@ These tests are designed to gracefully handle missing connections or credentials
 
 2. **Missing Services**: Tests will be skipped if the services themselves are not available (e.g., if Qdrant is not running on the specified URL).
 
-3. **Missing Image Files**: For tests requiring images (like FASHN.AI), the tests will create placeholder images or use default URLs if test images are not available.
+3. **Missing Image Files**: For tests requiring images (like FASHN.AI), the tests will use default high-quality images from Unsplash rather than relying on local files.
 
 This ensures that the test suite remains functional even when testing in environments where not all services are available.
 
@@ -132,6 +132,12 @@ These tests use the following pytest markers:
 ### FASHN.AI Tests
 
 The FASHN.AI tests focus on virtual try-on functionality, which is the primary capability we're using from this service. The tests use a polling approach to handle the asynchronous nature of the processing.
+
+Key features of the FASHN.AI tests:
+- Tests basic API accessibility without relying on specific endpoints that might change
+- Uses high-quality Unsplash images for more reliable pose detection
+- Handles common PoseError issues gracefully by skipping tests instead of failing
+- Implements robust polling with appropriate timeouts and diagnostics
 
 ### OpenAI Tests
 
