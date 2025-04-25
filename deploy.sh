@@ -16,11 +16,11 @@ ssh-add ~/.ssh/id_rsa
 # Make sure the remote URL is set to SSH (safe to re-run)
 git remote set-url origin git@github.com:ZakariaLabban/ai-fashion-advisor.git
 
-echo "Pulling latest changes from 'actions' branch..."
-git pull origin actions
+echo "Pulling latest changes from main branch..."
+git pull origin main
 
 echo "Rebuilding and starting containers..."
-docker-compose build --no-cache
+docker-compose build
 docker-compose up -d
 
 echo "Verifying containers are running..."
