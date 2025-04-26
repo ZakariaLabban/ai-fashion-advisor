@@ -17,6 +17,8 @@ AI Fashion Advisor leverages advanced deep learning models to detect clothing it
 - **Recommendation System**: Find matching or similar clothing items based on color and style
 - **Modern React Frontend**: Sleek, responsive UI built with React and Tailwind CSS
 - **Outfit Matching**: Evaluate how well tops and bottoms match and get styling suggestions
+- **Text-to-Image Search**: Find clothing items by natural language description
+- **Person Detection**: Identify and locate people in images for better processing
 
 ## Architecture
 
@@ -70,13 +72,28 @@ The system is built using a microservices architecture with the following compon
    - Provides comprehensive match scores and detailed analysis
    - Offers styling suggestions for improvement
 
+10. **Text-to-Image IEP**: Enables natural language search for clothing items
+    - Converts text descriptions to CLIP embeddings for semantic search
+    - Filters queries to ensure they're clothing-related using GPT-4o-mini
+    - Searches the Qdrant vector database for matching clothing items
+    - Retrieves images from Google Drive based on search results
+    - Provides monitoring and metrics for performance tracking
+
+11. **Person Detector IEP**: Specialized service for detecting people in images
+    - Uses YOLOv8 model optimized for person detection
+    - Identifies and provides bounding boxes for people in images
+    - Can optionally return cropped images of detected persons
+    - Supports confidence threshold adjustment for detection sensitivity
+    - Includes Prometheus metrics for monitoring service performance
+
 ## Model Files
 
 This project uses several large model files that are not included in the repository:
 
-- `yolov8_clothing_detection_segmentation.pt` - YOLOv8 model for detecting and segmenting clothes
-- `yolov8_style_model.pt` - YOLOv8 model for style classification
+- `yolov8_clothing_detection_segmentation.pt` - YOLOv8 fine-tuned model on DeepFashion dataset for detecting and segmenting clothes
+- `yolov8_style_model.pt` - YOLOv8 fined-tuned model for style classification
 - `multitask_resnet50_finetuned.pt` - Fine-tuned ResNet50 for feature extraction
+- `yolov8n.pt` - Pre-trained model on COCO dataset for people detection.
 
 ## Prerequisites
 
@@ -104,6 +121,8 @@ This project uses several large model files that are not included in the reposit
    - `yolov8_clothing_detection_segmentation.pt`
    - `yolov8_style_model.pt`
    - `multitask_resnet50_finetuned.pt`
+   - `yolov8n.pt`
+
 
 3. **Create environment file**
 
@@ -149,7 +168,7 @@ This project uses several large model files that are not included in the reposit
 4. **Obtain Google Drive API credentials**
 
    - Create a service account in Google Cloud Console
-   - Download the JSON credentials file and rename it to `auradataset-643b5a8d654e.json`
+   - Download the JSON credentials file and rename it to `auradataset-a28919b443a7.json`
    - Place it in the `reco_data_iep` directory
    - Share your Google Drive folders with the service account email
 
@@ -228,6 +247,12 @@ The matching algorithm evaluates:
 3. Choose whether to find a matching item (e.g., bottom to match a top) or similar items
 4. View the recommended items
 
+### Text-to-Image Search
+1. Navigate to the Fashion Finder" section
+2. Type a descriptive query about the clothing you're looking for (e.g., "blue denim jacket" or "floral summer dress")
+3. Click "Enter" to find clothing items matching your description
+
+
 ## API Reference
 
 ### Main Endpoints
@@ -243,6 +268,8 @@ The matching algorithm evaluates:
 | `/recommendation/similarity` | POST | Find similar clothing items |
 | `/match` | POST | Evaluate outfit compatibility |
 | `/compute_match` | POST | Compute outfit match score with pre-processed data |
+| `/text-search` | POST | Search for clothing items using natural language |
+| `/detect-persons` | POST | Detect people in an uploaded image |
 | `/health` | GET | Check service health |
 
 ### Internal Service Endpoints
@@ -255,50 +282,10 @@ The matching algorithm evaluates:
 | Feature IEP | 7003 | http://localhost:7003 |
 | Virtual Try-On IEP | 7004 | http://localhost:7004 |
 | Elegance Fashion Advisor IEP | 7005 | http://localhost:7005 |
-| Match IEP | 7006 | http://localhost:7006 |
+| Match IEP | 7008 | http://localhost:7008 |
 | Recommendation Data IEP | 7007 | http://localhost:7007 |
-
-## Development
-
-### Frontend Development
-
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
-
-The development server will run at [http://localhost:5173](http://localhost:5173)
-
-### Adding New Features
-
-1. For new AI models, add them to the appropriate IEP service
-2. Update the EEP to expose new endpoints as needed
-3. Extend the frontend to support new functionality
-
-### Recommendation Data IEP
-
-The Recommendation Data IEP provides fashion item matching and similarity search:
-
-- **Matching**: Find complementary items (e.g., bottoms to match a top)
-- **Similarity**: Find similar items (e.g., similar shirts)
-
-The service integrates:
-- **Qdrant Vector Database**: For vector similarity search
-- **MySQL Database**: For metadata storage and filtering
-- **Google Drive**: For storing and retrieving fashion images
-
-### Match IEP
-
-The Match IEP evaluates compatibility between clothing items with a scoring system:
-
-| Component | Weight | Justification |
-|-----------|--------|---------------|
-| Color Harmony (K-means) | 30% | Visual perception of dominant colors is immediately noticeable |
-| Feature Match | 30% | Deep learning embeddings capture learned patterns of compatibility |
-| Color Histogram | 25% | Detailed color distribution provides nuanced color compatibility |
-| Style Consistency | 10% | Style categorization ensures appropriate pairings |
-| Occasion Appropriateness | 5% | Situational context provides additional context |
+| Person Detector IEP | 7009 | http://localhost:7009 |
+| Text-to-Image Search IEP | 7020 | http://localhost:7020 |
 
 ## Test Images Guidelines
 
@@ -313,18 +300,6 @@ The Match IEP evaluates compatibility between clothing items with a scoring syst
 - Use good lighting conditions
 - Include a variety of clothing styles and items
 - Resolution should be at least 512x768 pixels
-
-## Known Issues and Limitations
-
-1. **Database Setup**: The recommendation system requires a pre-populated MySQL database and Qdrant collection. Documentation for initial data loading is needed.
-
-2. **Model Availability**: The large model files are not included in the repository and must be obtained separately.
-
-3. **Integration Testing**: Comprehensive end-to-end tests for the complete workflow are missing.
-
-4. **Recommendation Data**: The application needs a significant amount of clothing data to provide meaningful recommendations.
-
-5. **Error Handling**: Some edge cases in the integration between services may not be properly handled.
 
 ## Future Improvements
 
@@ -351,12 +326,6 @@ The Match IEP evaluates compatibility between clothing items with a scoring syst
 ```bash
 # Stop all containers
 docker-compose down
-
-# Windows
-.\clean.ps1
-
-# Linux/Mac
-./clean.sh
 ```
 
 ## Acknowledgments
@@ -368,4 +337,48 @@ This project uses the following technologies and services:
 - [YOLOv8](https://github.com/ultralytics/ultralytics) for object detection and segmentation
 - [Qdrant](https://qdrant.tech/) for vector similarity search
 - [Google Drive API](https://developers.google.com/drive) for image storage
+
+## Project Analysis
+
+### System Architecture Overview
+
+AI Fashion Advisor is built on a robust microservices architecture with 11 specialized services that work together to provide a comprehensive fashion technology solution:
+
+1. **Frontend Interface**: A modern React application serving as the user-facing component
+2. **Service Orchestration**: External Endpoint Processor (EEP) that coordinates all service interactions
+3. **Computer Vision Pipeline**: Multiple specialized services for clothing detection, feature extraction, and style classification
+4. **Virtual Try-On System**: Service for visualizing how clothing items would look on a person
+5. **Recommendation Engine**: Services for finding matching or similar clothing items
+6. **Outfit Analysis**: Service for evaluating outfit compatibility and providing styling advice
+7. **Natural Language Search**: Text-to-Image service for finding clothing by description
+8. **Person Detection**: Specialized detection service optimized for identifying people in images
+9. **AI Advisor**: Intelligent chatbot service that provides fashion advice and guidance
+
+### Key Technologies
+
+- **Deep Learning**: YOLOv8 for object detection, ResNet50 for feature extraction
+- **Vector Databases**: Qdrant for fast similarity search
+- **Third-Party APIs**: FASHN.AI for virtual try-on, OpenAI for AI chat capabilities
+- **Cloud Storage**: Google Drive for image storage
+- **Containerization**: Docker and Docker Compose for deployment
+- **Monitoring**: Prometheus metrics integrated across services
+
+### Integration Points
+
+The system integrates with multiple external services:
+- API connections to FASHN.AI and OpenAI
+- Database connections to MySQL and Qdrant
+- File storage on Google Drive
+- Azure Key Vault for secrets management
+- Azure Blob Storage for model storage
+
+### Data Flow
+
+1. Images are uploaded through the frontend
+2. EEP routes requests to appropriate services
+3. Detection, classification, and feature extraction are performed
+4. Results are processed according to the user's request (recommendations, try-on, matching, etc.)
+5. Processed results are returned to the frontend for display
+
+This architecture enables the system to handle complex fashion analysis tasks while maintaining flexibility and scalability.
 
