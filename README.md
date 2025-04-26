@@ -1,7 +1,4 @@
 # AI Fashion Advisor
-
-> **IMPORTANT:** The project now uses a single `.env` file in the root directory instead of multiple .env files. Previously, separate .env files existed in `reco_data_iep`, `text2image_iep`, and `virtual_tryon_iep` directories. If you're migrating from a previous version, combine all environment variables into one file.
-
 A comprehensive system that combines computer vision and artificial intelligence to provide fashion analysis, virtual try-on, personalized style advice, and clothing recommendations.
 
 ## Overview
@@ -149,7 +146,7 @@ This project uses several large model files that are not included in the reposit
    # Google Drive Configuration
    SEGMENTED_FOLDER_ID=your_google_drive_folder_id_for_segmented
    FULL_FOLDER_ID=your_google_drive_folder_id_for_full_images
-   SERVICE_ACCOUNT_FILE=auradataset-a28919b443a7.json
+   SERVICE_ACCOUNT_FILE= your_service_account.json
    ```
 
    ### Migration from Multiple .env Files
